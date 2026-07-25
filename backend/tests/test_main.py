@@ -1,6 +1,7 @@
 from unittest.mock import Mock, patch
 
 from token_tide.main import application_info, main
+from token_tide.router import router
 
 
 def test_application_info_uses_unknown_commit_by_default(
@@ -43,3 +44,14 @@ def test_main_bootstraps_before_configuring_and_starting() -> None:
         main()
 
     assert events == ["logging", "bootstrap", "configure", "uvicorn"]
+
+
+def test_business_routes_do_not_include_reverse_proxy_prefix() -> None:
+    route_paths = {route.path for route in router.routes}
+
+    assert route_paths == {
+        "/balances",
+        "/balances/{provider}/history",
+        "/refresh",
+        "/refresh/{provider}",
+    }

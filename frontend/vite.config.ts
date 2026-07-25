@@ -19,6 +19,7 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8800',
           changeOrigin: true,
+          rewrite: (requestPath) => requestPath.replace(/^\/api/, ''),
         },
       },
     },

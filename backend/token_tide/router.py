@@ -8,7 +8,7 @@ from token_tide.response import R, ok
 from token_tide.schemas import BalanceHistory, ProviderBalance, ProviderRefreshResult
 from token_tide.service import BalanceService
 
-router = APIRouter(prefix="/api")
+router = APIRouter()
 Service = Annotated[BalanceService, Depends(get_balance_service)]
 
 

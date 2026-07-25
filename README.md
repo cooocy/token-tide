@@ -99,10 +99,10 @@ APScheduler 当前运行在 Web 进程内。生产环境只能启动一个后端
 
 ```text
 GET  /
-GET  /api/balances
-GET  /api/balances/{provider}/history
-POST /api/refresh
-POST /api/refresh/{provider}
+GET  /balances
+GET  /balances/{provider}/history
+POST /refresh
+POST /refresh/{provider}
 ```
 
 历史接口支持：
@@ -127,7 +127,7 @@ pnpm install
 pnpm dev
 ```
 
-开发服务器默认把 `/api` 代理到 `http://127.0.0.1:8800`。独立部署时将 `VITE_API_BASE` 指向后端公开地址，或由 Web Server 反向代理 `/api`。
+开发服务器默认把 `/api` 代理到 `http://127.0.0.1:8800`，转发时会移除 `/api` 前缀。独立部署时将 `VITE_API_BASE` 指向后端公开地址，反向代理使用的外部路径前缀不进入 Python Router。
 
 ## 刷新行为
 
