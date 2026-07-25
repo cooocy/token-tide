@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+
+# Runtime configuration and logs
+backend/application-*.yaml
+!backend/application-example.yaml
+backend/logs/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
