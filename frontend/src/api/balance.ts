@@ -25,16 +25,6 @@ export interface BalanceHistory {
   points: BalanceValue[];
 }
 
-export interface ProviderRefreshResult {
-  provider: string;
-  status: 'SUCCESS' | 'FAILED';
-  started_at: string;
-  finished_at: string;
-  snapshot_count: number;
-  error_code: string | null;
-  error_message: string | null;
-}
-
 export interface HistoryQuery {
   currency?: string;
   startTime?: string;
@@ -58,12 +48,4 @@ export function findBalanceHistory(
       limit: query.limit,
     },
   });
-}
-
-export function refreshBalances(): Promise<ProviderRefreshResult[]> {
-  return client.post<unknown, ProviderRefreshResult[]>('/refresh');
-}
-
-export function refreshProvider(provider: string): Promise<ProviderRefreshResult> {
-  return client.post<unknown, ProviderRefreshResult>(`/refresh/${provider}`);
 }

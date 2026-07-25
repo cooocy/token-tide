@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import {
-  findBalanceHistory,
-  refreshProvider,
-  type BalanceHistory,
-} from '@/api/balance';
+import { findBalanceHistory, type BalanceHistory } from '@/api/balance';
 import BalanceTrendChart from '@/components/BalanceTrendChart';
 import ProviderMark from '@/components/ProviderMark';
 import {
@@ -22,14 +18,6 @@ function BackIcon() {
   );
 }
 
-function RefreshIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M20 11a8 8 0 1 0-2.34 5.66M20 5v6h-6" />
-    </svg>
-  );
-}
-
 export default function ProviderHistoryPage() {
   const { provider = '' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -37,9 +25,7 @@ export default function ProviderHistoryPage() {
   const [currencies, setCurrencies] = useState<string[]>([]);
   const [selectedCurrency, setSelectedCurrency] = useState('');
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   const loadCurrency = useCallback(
     async (currency: string, preserveCurrent = true): Promise<boolean> => {
@@ -84,7 +70,6 @@ export default function ProviderHistoryPage() {
       setCurrencies([]);
       setLoading(true);
       setError(null);
-      setNotice(null);
 
       try {
         const overview = await findBalanceHistory(provider);
@@ -142,32 +127,7 @@ export default function ProviderHistoryPage() {
     setSearchParams({ currency }, { replace: true });
     setHistory(null);
     setLoading(true);
-    setNotice(null);
     await loadCurrency(currency, false);
-  };
-
-  const handleRefresh = async (): Promise<void> => {
-    if (!provider) {
-      return;
-    }
-    setRefreshing(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const result = await refreshProvider(provider);
-      const loaded = await loadCurrency(selectedCurrency);
-      if (loaded) {
-        setNotice(
-          result.status === 'SUCCESS'
-            ? '平台余额已更新'
-            : result.error_message ?? '本次刷新失败，仍显示上次成功数据',
-        );
-      }
-    } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : '刷新失败');
-    } finally {
-      setRefreshing(false);
-    }
   };
 
   const points = useMemo(
@@ -186,7 +146,7 @@ export default function ProviderHistoryPage() {
       : 0;
 
   return (
-    <main className="app-shell history-page" aria-busy={loading || refreshing}>
+    <main className="app-shell history-page" aria-busy={loading}>
       <header className="history-header">
         <Link className="back-link" to="/" aria-label="返回平台余额">
           <BackIcon />
@@ -218,7 +178,6 @@ export default function ProviderHistoryPage() {
             )}
           </div>
         )}
-        {notice && <div className="inline-message is-success">{notice}</div>}
       </div>
 
       {loading && !history && (
@@ -234,15 +193,6 @@ export default function ProviderHistoryPage() {
           <section className="balance-hero" aria-labelledby="history-balance-title">
             <div className="balance-hero-heading">
               <p className="section-kicker">AVAILABLE BALANCE</p>
-              <button
-                type="button"
-                className={`overview-refresh${refreshing ? ' is-refreshing' : ''}`}
-                onClick={handleRefresh}
-                disabled={refreshing || loading || !provider}
-              >
-                <RefreshIcon />
-                <span>{refreshing ? '刷新中' : '刷新'}</span>
-              </button>
             </div>
             <div className="hero-value-row">
               <div>
@@ -307,7 +257,7 @@ export default function ProviderHistoryPage() {
             {points.length === 0 ? (
               <div className="empty-panel is-compact">
                 <h2>还没有历史记录</h2>
-                <p>刷新平台后，新的余额快照会显示在这里。</p>
+                <p>定时任务刷新后，新的余额快照会显示在这里。</p>
               </div>
             ) : (
               <ol className="record-list">

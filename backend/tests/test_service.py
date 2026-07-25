@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from token_tide.models import BalanceSnapshot, Base, RefreshRun
 from token_tide.providers.base import BalanceProvider, BalanceReading, ProviderError
-from token_tide.schemas import BalanceValue, ProviderRefreshResult
+from token_tide.schemas import BalanceValue, ProviderBalance, ProviderRefreshResult
 from token_tide.service import BalanceService, decimal_string, normalize_amount
 
 
@@ -120,3 +120,43 @@ def test_observed_at_serializes_as_utc() -> None:
     )
 
     assert balance.model_dump(mode="json")["observed_at"] == "2026-07-25T10:21:10Z"
+
+
+def test_provider_timestamps_serialize_as_utc_z() -> None:
+    provider = ProviderBalance(
+        provider="stub",
+        status="SUCCESS",
+        last_refresh_at=datetime(
+            2026,
+            7,
+            25,
+            18,
+            21,
+            10,
+            tzinfo=timezone(timedelta(hours=8)),
+        ),
+        last_success_at=datetime(2026, 7, 25, 10, 21, 10),
+        error_code=None,
+        error_message=None,
+        balances=[],
+    )
+
+    payload = provider.model_dump(mode="json")
+
+    assert payload["last_refresh_at"] == "2026-07-25T10:21:10Z"
+    assert payload["last_success_at"] == "2026-07-25T10:21:10Z"
+
+
+def test_refresh_result_timestamps_serialize_as_utc_z() -> None:
+    result = ProviderRefreshResult(
+        provider="stub",
+        status="SUCCESS",
+        started_at=datetime(2026, 7, 25, 10, 21, 10),
+        finished_at=datetime(2026, 7, 25, 10, 22, 10, tzinfo=UTC),
+        snapshot_count=1,
+    )
+
+    payload = result.model_dump(mode="json")
+
+    assert payload["started_at"] == "2026-07-25T10:21:10Z"
+    assert payload["finished_at"] == "2026-07-25T10:22:10Z"

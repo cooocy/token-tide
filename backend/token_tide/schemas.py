@@ -3,6 +3,16 @@ from datetime import UTC, datetime
 from pydantic import BaseModel, Field, field_serializer
 
 
+def serialize_utc_datetime(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    else:
+        value = value.astimezone(UTC)
+    return value.isoformat().replace("+00:00", "Z")
+
+
 class ApplicationInfo(BaseModel):
     app: str
     ts: str
@@ -16,12 +26,8 @@ class BalanceValue(BaseModel):
     observed_at: datetime
 
     @field_serializer("observed_at", when_used="json")
-    def serialize_observed_at(self, value: datetime) -> str:
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=UTC)
-        else:
-            value = value.astimezone(UTC)
-        return value.isoformat().replace("+00:00", "Z")
+    def serialize_observed_at(self, value: datetime) -> str | None:
+        return serialize_utc_datetime(value)
 
 
 class ProviderBalance(BaseModel):
@@ -32,6 +38,10 @@ class ProviderBalance(BaseModel):
     error_code: str | None
     error_message: str | None
     balances: list[BalanceValue]
+
+    @field_serializer("last_refresh_at", "last_success_at", when_used="json")
+    def serialize_refresh_at(self, value: datetime | None) -> str | None:
+        return serialize_utc_datetime(value)
 
 
 class HistoryPoint(BalanceValue):
@@ -52,3 +62,7 @@ class ProviderRefreshResult(BaseModel):
     snapshot_count: int
     error_code: str | None = None
     error_message: str | None = None
+
+    @field_serializer("started_at", "finished_at", when_used="json")
+    def serialize_run_at(self, value: datetime) -> str | None:
+        return serialize_utc_datetime(value)

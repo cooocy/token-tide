@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  findBalances,
-  refreshBalances,
-  type ProviderBalance,
-  type ProviderStatus,
-} from '@/api/balance';
+import { findBalances, type ProviderBalance, type ProviderStatus } from '@/api/balance';
 import ProviderMark from '@/components/ProviderMark';
 import {
   formatAmount,
@@ -25,14 +20,6 @@ const STATUS_META: Record<ProviderStatus, StatusMeta> = {
   NEVER_REFRESHED: { className: 'is-idle', label: '等待首次更新' },
 };
 
-function RefreshIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M20 11a8 8 0 1 0-2.34 5.66M20 5v6h-6" />
-    </svg>
-  );
-}
-
 function ArrowIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -44,9 +31,7 @@ function ArrowIcon() {
 export default function DashboardPage() {
   const [providers, setProviders] = useState<ProviderBalance[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   const loadBalances = useCallback(async (preserveCurrent = false): Promise<boolean> => {
     try {
@@ -68,28 +53,6 @@ export default function DashboardPage() {
     void loadBalances();
   }, [loadBalances]);
 
-  const handleRefresh = async (): Promise<void> => {
-    setRefreshing(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const results = await refreshBalances();
-      const loaded = await loadBalances(true);
-      if (loaded) {
-        const failedCount = results.filter((result) => result.status === 'FAILED').length;
-        setNotice(
-          failedCount > 0
-            ? `${results.length - failedCount} 个平台已更新，${failedCount} 个失败`
-            : `${results.length} 个平台已更新`,
-        );
-      }
-    } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : '刷新失败');
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
   const summary = useMemo(() => {
     const items = providers ?? [];
     const healthyCount = items.filter((provider) => provider.status === 'SUCCESS').length;
@@ -101,7 +64,7 @@ export default function DashboardPage() {
   }, [providers]);
 
   return (
-    <main className="app-shell dashboard-page" aria-busy={loading || refreshing}>
+    <main className="app-shell dashboard-page" aria-busy={loading}>
       <header className="dashboard-header">
         <div className="brand-lockup">
           <span className="brand-mark" aria-hidden="true">
@@ -126,15 +89,6 @@ export default function DashboardPage() {
           <h1 id="overview-title">平台余额</h1>
           <p>{formatRelativeTime(summary.latestSuccess)}</p>
         </div>
-        <button
-          type="button"
-          className={`overview-refresh${refreshing ? ' is-refreshing' : ''}`}
-          onClick={handleRefresh}
-          disabled={refreshing || loading}
-        >
-          <RefreshIcon />
-          <span>{refreshing ? '刷新中' : '刷新'}</span>
-        </button>
       </section>
 
       <div className="message-stack" aria-live="polite">
@@ -148,7 +102,6 @@ export default function DashboardPage() {
             )}
           </div>
         )}
-        {notice && <div className="inline-message is-success">{notice}</div>}
       </div>
 
       {loading && !providers && (

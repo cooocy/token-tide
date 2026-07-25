@@ -228,40 +228,6 @@ svg {
   font-size: 0.82rem;
 }
 
-.overview-refresh {
-  display: inline-flex;
-  min-width: 92px;
-  min-height: 42px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-bottom: 2px;
-  padding: 0 14px;
-  border: 1px solid rgba(50, 214, 197, 0.32);
-  border-radius: 13px;
-  color: var(--current);
-  background: rgba(50, 214, 197, 0.07);
-  cursor: pointer;
-  font-family: var(--display-font);
-  font-size: 0.78rem;
-  font-weight: 650;
-}
-
-.overview-refresh svg {
-  width: 17px;
-  height: 17px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.9;
-}
-
-.overview-refresh.is-refreshing svg {
-  animation: refresh-spin 1.2s linear infinite;
-}
-
 .message-stack {
   display: grid;
   gap: 8px;
@@ -928,12 +894,6 @@ svg {
   color: var(--current);
   background: rgba(50, 214, 197, 0.08);
   font-size: 0.58rem;
-}
-
-@keyframes refresh-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 @keyframes skeleton-breathe {
