@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
 
 class ApplicationInfo(BaseModel):
@@ -14,6 +14,14 @@ class BalanceValue(BaseModel):
     available_amount: str
     is_available: bool
     observed_at: datetime
+
+    @field_serializer("observed_at", when_used="json")
+    def serialize_observed_at(self, value: datetime) -> str:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        else:
+            value = value.astimezone(UTC)
+        return value.isoformat().replace("+00:00", "Z")
 
 
 class ProviderBalance(BaseModel):

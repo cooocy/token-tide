@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 
 import pytest
@@ -7,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from token_tide.models import BalanceSnapshot, Base, RefreshRun
 from token_tide.providers.base import BalanceProvider, BalanceReading, ProviderError
-from token_tide.schemas import ProviderRefreshResult
+from token_tide.schemas import BalanceValue, ProviderRefreshResult
 from token_tide.service import BalanceService, decimal_string, normalize_amount
 
 
@@ -108,3 +109,14 @@ def test_amount_rounding_uses_round_half_up() -> None:
     assert normalize_amount(Decimal("1.235")) == Decimal("1.24")
     assert normalize_amount(Decimal("-1.235")) == Decimal("-1.24")
     assert decimal_string(Decimal("1")) == "1.00"
+
+
+def test_observed_at_serializes_as_utc() -> None:
+    balance = BalanceValue(
+        currency="USD",
+        available_amount="12.34",
+        is_available=True,
+        observed_at=datetime(2026, 7, 25, 10, 21, 10),
+    )
+
+    assert balance.model_dump(mode="json")["observed_at"] == "2026-07-25T10:21:10Z"
