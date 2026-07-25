@@ -4,7 +4,15 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, model_validator
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    ValidationError,
+    model_validator,
+)
 
 
 def to_kebab(field_name: str) -> str:
@@ -46,6 +54,7 @@ class ProviderSettings(ConfigurationModel):
     enabled: bool = False
     api_key: SecretStr = SecretStr("")
     base_url: str = Field(min_length=1)
+    proxy_url: AnyHttpUrl | None = None
 
     @model_validator(mode="after")
     def validate_enabled_provider(self) -> "ProviderSettings":

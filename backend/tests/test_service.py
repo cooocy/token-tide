@@ -8,15 +8,20 @@ from sqlalchemy.pool import StaticPool
 from token_tide.models import BalanceSnapshot, Base, RefreshRun
 from token_tide.providers.base import BalanceProvider, BalanceReading, ProviderError
 from token_tide.schemas import ProviderRefreshResult
-from token_tide.service import BalanceService
+from token_tide.service import BalanceService, decimal_string, normalize_amount
 
 
 class StubProvider(BalanceProvider):
     name = "stub"
 
-    def __init__(self, should_fail: bool = False) -> None:
+    def __init__(
+        self,
+        should_fail: bool = False,
+        amount: Decimal = Decimal("12.34"),
+    ) -> None:
         self.enabled = True
         self.should_fail = should_fail
+        self.amount = amount
 
     async def fetch_balance(self) -> list[BalanceReading]:
         if self.should_fail:
@@ -25,8 +30,8 @@ class StubProvider(BalanceProvider):
             BalanceReading(
                 provider=self.name,
                 currency="USD",
-                available_amount=Decimal("12.34"),
-                prepaid_amount=Decimal("12.34"),
+                available_amount=self.amount,
+                prepaid_amount=self.amount,
                 granted_amount=None,
                 is_available=True,
             )
@@ -48,13 +53,18 @@ def session_factory() -> sessionmaker[Session]:
 async def test_successful_refresh_persists_snapshot(
     session_factory: sessionmaker[Session],
 ) -> None:
-    service = BalanceService({"stub": StubProvider()}, session_factory)
+    service = BalanceService(
+        {"stub": StubProvider(amount=Decimal("12.345"))},
+        session_factory,
+    )
 
     result = await service.refresh_provider("stub", "MANUAL")
 
     assert result.status == "SUCCESS"
     with session_factory() as session:
-        assert session.scalar(select(BalanceSnapshot)) is not None
+        snapshot = session.scalar(select(BalanceSnapshot))
+        assert snapshot is not None
+        assert snapshot.available_amount == Decimal("12.35")
         assert session.scalar(select(RefreshRun)).status == "SUCCESS"  # type: ignore[union-attr]
 
 
@@ -89,5 +99,12 @@ async def test_latest_balance_keeps_last_success_after_failure(
     latest = service.latest_balances()[0]
 
     assert latest.status == "FAILED"
-    assert latest.balances[0].available_amount == "12.34000000"
+    assert latest.balances[0].available_amount == "12.34"
     assert latest.last_success_at is not None
+
+
+def test_amount_rounding_uses_round_half_up() -> None:
+    assert normalize_amount(Decimal("1.234")) == Decimal("1.23")
+    assert normalize_amount(Decimal("1.235")) == Decimal("1.24")
+    assert normalize_amount(Decimal("-1.235")) == Decimal("-1.24")
+    assert decimal_string(Decimal("1")) == "1.00"

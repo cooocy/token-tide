@@ -23,9 +23,9 @@ class BalanceSnapshot(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
     currency: Mapped[str] = mapped_column(String(8), nullable=False)
-    available_amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
-    prepaid_amount: Mapped[Decimal | None] = mapped_column(Numeric(20, 8))
-    granted_amount: Mapped[Decimal | None] = mapped_column(Numeric(20, 8))
+    available_amount: Mapped[Decimal] = mapped_column(Numeric(20, 2), nullable=False)
+    prepaid_amount: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    granted_amount: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
     is_available: Mapped[bool] = mapped_column(Boolean, nullable=False)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

@@ -49,6 +49,12 @@ class BalanceProvider(ABC):
                 base_url=self.settings.base_url.rstrip("/"),
                 headers=headers,
                 timeout=self.timeout_seconds,
+                proxy=(
+                    str(self.settings.proxy_url)
+                    if self.settings.proxy_url is not None
+                    else None
+                ),
+                trust_env=False,
             ) as client:
                 response = await client.get(path)
                 response.raise_for_status()

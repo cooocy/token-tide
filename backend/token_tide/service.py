@@ -2,6 +2,8 @@ import asyncio
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal
+from typing import overload
 
 from sqlalchemy import Select, desc, select
 from sqlalchemy.orm import Session
@@ -18,10 +20,26 @@ from token_tide.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+AMOUNT_QUANTUM = Decimal("0.01")
 
 
-def decimal_string(value: object | None) -> str | None:
-    return None if value is None else format(value, "f")
+@overload
+def normalize_amount(value: Decimal) -> Decimal: ...
+
+
+@overload
+def normalize_amount(value: None) -> None: ...
+
+
+def normalize_amount(value: Decimal | None) -> Decimal | None:
+    if value is None:
+        return None
+    return value.quantize(AMOUNT_QUANTUM, rounding=ROUND_HALF_UP)
+
+
+def decimal_string(value: Decimal | None) -> str | None:
+    normalized = normalize_amount(value)
+    return None if normalized is None else format(normalized, ".2f")
 
 
 class BalanceService:
@@ -67,9 +85,9 @@ class BalanceService:
                         BalanceSnapshot(
                             provider=reading.provider,
                             currency=reading.currency,
-                            available_amount=reading.available_amount,
-                            prepaid_amount=reading.prepaid_amount,
-                            granted_amount=reading.granted_amount,
+                            available_amount=normalize_amount(reading.available_amount),
+                            prepaid_amount=normalize_amount(reading.prepaid_amount),
+                            granted_amount=normalize_amount(reading.granted_amount),
                             is_available=reading.is_available,
                             observed_at=finished_at,
                         )

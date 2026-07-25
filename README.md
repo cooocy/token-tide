@@ -69,6 +69,20 @@ export BOOKSTORE_CODEUP_TOKEN=<token>
 
 三组凭证只需配置当前 `BOOKSTORE_ENGINE` 对应的一组。下载失败、内容为空或 YAML 校验失败时，迁移和应用都会立即停止。运行时配置文件已被 Git 忽略。
 
+每个平台可以独立配置可选的 HTTP/HTTPS 代理。例如仅让 xAI 的服务端请求经过本地代理：
+
+```yaml
+providers:
+  xai:
+    enabled: true
+    api-key: replace-me
+    base-url: https://management-api.x.ai
+    proxy-url: http://127.0.0.1:3128
+    team-id: replace-me
+```
+
+`proxy-url` 省略或设为 `null` 时直连。代理只影响所属 Provider 的余额 API 请求，不影响其他 Provider 或远端配置下载。
+
 ### 4. 迁移与启动
 
 ```bash
@@ -114,7 +128,7 @@ end-time
 limit        # 默认 100，最大 1000
 ```
 
-金额统一以十进制字符串返回。
+金额在写入数据库前按四舍五入保留 2 位小数，接口统一以固定 2 位的十进制字符串返回。
 
 ## 前端
 

@@ -23,16 +23,21 @@ providers:
     enabled: false
     api-key: ""
     base-url: https://openrouter.ai
+    proxy-url: null
   deepseek:
     enabled: false
     api-key: ""
     base-url: https://api.deepseek.com
+    proxy-url: null
   siliconflow:
     enabled: false
     api-key: ""
     base-url: https://api.siliconflow.com
+    proxy-url: null
   xai:
     enabled: false
     api-key: ""
     base-url: https://management-api.x.ai
+    # 可选，例如：http://127.0.0.1:3128
+    proxy-url: null
     team-id: ""

@@ -1,6 +1,8 @@
 from decimal import Decimal
+from typing import Any
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 
 from token_tide.config import ProviderSettings, XaiProviderSettings
@@ -10,10 +12,64 @@ from token_tide.providers.siliconflow import SiliconFlowProvider
 from token_tide.providers.xai import XaiProvider
 
 
-def provider_settings(base_url: str) -> ProviderSettings:
-    return ProviderSettings.model_validate(
-        {"enabled": True, "api-key": "secret", "base-url": base_url}
+def provider_settings(base_url: str, proxy_url: str | None = None) -> ProviderSettings:
+    values: dict[str, object] = {
+        "enabled": True,
+        "api-key": "secret",
+        "base-url": base_url,
+    }
+    if proxy_url is not None:
+        values["proxy-url"] = proxy_url
+    return ProviderSettings.model_validate(values)
+
+
+@pytest.mark.parametrize(
+    ("proxy_url", "expected_proxy"),
+    [
+        (None, None),
+        ("http://127.0.0.1:3128", "http://127.0.0.1:3128/"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_provider_request_uses_only_configured_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+    proxy_url: str | None,
+    expected_proxy: str | None,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    class StubResponse:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict[str, object]:
+            return {"ok": True}
+
+    class StubClient:
+        def __init__(self, **kwargs: Any) -> None:
+            captured.update(kwargs)
+
+        async def __aenter__(self) -> "StubClient":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            pass
+
+        async def get(self, path: str) -> StubResponse:
+            captured["path"] = path
+            return StubResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", StubClient)
+    provider = OpenRouterProvider(
+        provider_settings("https://openrouter.ai", proxy_url),
+        10,
     )
+
+    await provider.get_json("/api/v1/credits")
+
+    assert captured["proxy"] == expected_proxy
+    assert captured["trust_env"] is False
+    assert captured["path"] == "/api/v1/credits"
 
 
 @pytest.mark.asyncio

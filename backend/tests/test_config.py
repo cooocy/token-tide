@@ -1,8 +1,9 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
-from token_tide.config import ConfigurationError, load_settings
+from token_tide.config import ConfigurationError, ProviderSettings, load_settings
 
 
 def test_enabled_provider_requires_api_key(tmp_path: Path) -> None:
@@ -43,3 +44,28 @@ providers:
 
     with pytest.raises(ConfigurationError):
         load_settings(path)
+
+
+def test_provider_proxy_url_accepts_http_proxy() -> None:
+    settings = ProviderSettings.model_validate(
+        {
+            "enabled": True,
+            "api-key": "secret",
+            "base-url": "https://management-api.x.ai",
+            "proxy-url": "http://127.0.0.1:3128",
+        }
+    )
+
+    assert str(settings.proxy_url) == "http://127.0.0.1:3128/"
+
+
+def test_provider_proxy_url_rejects_non_http_scheme() -> None:
+    with pytest.raises(ValidationError):
+        ProviderSettings.model_validate(
+            {
+                "enabled": True,
+                "api-key": "secret",
+                "base-url": "https://management-api.x.ai",
+                "proxy-url": "socks5://127.0.0.1:1080",
+            }
+        )
