@@ -2,7 +2,7 @@
 name = "token-tide"
 version = "0.1.0"
 description = "Unified dashboard API for AI platform balances"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.14,<2",
     "apscheduler>=3.11,<4",

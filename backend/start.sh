@@ -4,7 +4,7 @@ set -Eeuo pipefail
 umask 027
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-PYTHON_BIN="${PYTHON_BIN:-/opt/python/3.13.0/bin/python3}"
+PYTHON_BIN="${PYTHON_BIN:-/opt/python/3.12.13/bin/python3}"
 VENV_DIR="${PROJECT_ROOT}/.venv"
 RUN_DIR="${PROJECT_ROOT}/run"
 LOG_DIR="${PROJECT_ROOT}/logs"
@@ -78,8 +78,8 @@ fi
 python_version="$("${VENV_DIR}/bin/python" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 python_major="${python_version%%.*}"
 python_minor="${python_version#*.}"
-if [[ "${python_major}" != "3" ]] || (( python_minor < 13 )); then
-    echo "Virtual environment must use Python 3.13+, found: ${python_version}" >&2
+if [[ "${python_major}" != "3" ]] || (( python_minor < 12 )); then
+    echo "Virtual environment must use Python 3.12+, found: ${python_version}" >&2
     exit 1
 fi
 
