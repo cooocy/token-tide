@@ -22,10 +22,6 @@ class DeepSeekProvider(BalanceProvider):
                     provider=self.name,
                     currency=currency,
                     available_amount=decimal_value(balance.get("total_balance"), "total_balance"),
-                    prepaid_amount=decimal_value(
-                        balance.get("topped_up_balance"),
-                        "topped_up_balance",
-                    ),
                     granted_amount=decimal_value(
                         balance.get("granted_balance"),
                         "granted_balance",

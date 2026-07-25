@@ -12,7 +12,6 @@ class ApplicationInfo(BaseModel):
 class BalanceValue(BaseModel):
     currency: str
     available_amount: str
-    prepaid_amount: str | None
     granted_amount: str | None
     is_available: bool
     observed_at: datetime

@@ -56,7 +56,6 @@ class XaiProvider(BalanceProvider):
                 provider=self.name,
                 currency="USD",
                 available_amount=available,
-                prepaid_amount=prepaid,
                 granted_amount=None,
                 is_available=available > 0,
             )

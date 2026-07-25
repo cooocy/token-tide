@@ -5,7 +5,6 @@ export type ProviderStatus = 'NEVER_REFRESHED' | 'RUNNING' | 'SUCCESS' | 'FAILED
 export interface BalanceValue {
   currency: string;
   available_amount: string;
-  prepaid_amount: string | null;
   granted_amount: string | null;
   is_available: boolean;
   observed_at: string;

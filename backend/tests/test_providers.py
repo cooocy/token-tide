@@ -97,13 +97,11 @@ async def test_deepseek_returns_each_currency() -> None:
                     "currency": "CNY",
                     "total_balance": "110.00",
                     "granted_balance": "10.00",
-                    "topped_up_balance": "100.00",
                 },
                 {
                     "currency": "USD",
                     "total_balance": "5.00",
                     "granted_balance": "0.00",
-                    "topped_up_balance": "5.00",
                 },
             ],
         }
@@ -112,7 +110,8 @@ async def test_deepseek_returns_each_currency() -> None:
     readings = await provider.fetch_balance()
 
     assert [reading.currency for reading in readings] == ["CNY", "USD"]
-    assert readings[0].prepaid_amount == Decimal("100.00")
+    assert readings[0].available_amount == Decimal("110.00")
+    assert readings[0].granted_amount == Decimal("10.00")
 
 
 @pytest.mark.asyncio
@@ -123,7 +122,6 @@ async def test_siliconflow_balance_components() -> None:
             "status": True,
             "data": {
                 "balance": "0.88",
-                "chargeBalance": "88.00",
                 "totalBalance": "88.88",
             },
         }
@@ -164,7 +162,6 @@ async def test_xai_subtracts_used_prepaid_credits_from_available_balance(
         "/v1/billing/teams/team-id/postpaid/invoice/preview"
     )
     assert readings[0].available_amount == Decimal("3.65")
-    assert readings[0].prepaid_amount == Decimal("5")
     assert readings[0].is_available is True
 
 
