@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="tide" x1="128" y1="18" x2="128" y2="246" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#00dba7" />
+      <stop offset="0.52" stop-color="#04b9c5" />
+      <stop offset="1" stop-color="#0878d1" />
+    </linearGradient>
+  </defs>
+
+  <g fill="url(#tide)">
+    <path d="M27 153C13 88 62 24 128 24s115 64 101 129l-14 8c19-56-24-120-87-120S22 105 41 161l-14-8Z" />
+
+    <rect x="105" y="99" width="25" height="72" rx="7" />
+    <rect x="145" y="69" width="25" height="102" rx="7" />
+
+    <path d="M22 168c28-25 53-24 87-4 39 24 76 47 125-5-8 24-28 43-56 52-31 10-59-5-88-23-26-16-45-23-62-7l-6-13Z" />
+    <path d="M36 205c20-12 41-7 66 9 29 19 58 26 94 10-19 18-42 28-68 28-40 0-74-18-92-47Z" />
+  </g>
+</svg>
