@@ -9,6 +9,7 @@ __pycache__/
 backend/application-*.yaml
 !backend/application-example.yaml
 backend/logs/
+backend/run/
 
 # Frontend
 frontend/node_modules/

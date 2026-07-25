@@ -70,6 +70,16 @@ export CONFIGURATION_TAIL=local
 CONFIGURATION_TAIL=local ./start.sh
 ```
 
+`start.sh` 会创建或复用 `.venv`、更新安装 TokenTide、执行数据库迁移、安全停止旧进程并以后台进程重新启动。默认 Python 路径为 `/opt/python/3.13.0/bin/python3`，其他安装位置可通过 `PYTHON_BIN` 指定：
+
+```bash
+CONFIGURATION_TAIL=local \
+PYTHON_BIN=/path/to/python3 \
+./start.sh
+```
+
+运行时 PID 保存在 `backend/run/token-tide.pid`，应用、安装和迁移日志分别写入 `backend/logs/app.log`、`install.log` 和 `alembic.log`。
+
 APScheduler 当前运行在 Web 进程内。生产环境只能启动一个后端 Worker，否则每个 Worker 都会执行定时刷新。
 
 ### API
