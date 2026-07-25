@@ -13,20 +13,46 @@ class XaiProvider(BalanceProvider):
 
     async def fetch_balance(self) -> list[BalanceReading]:
         payload = await self.get_json(
-            f"/v1/billing/teams/{self.xai_settings.team_id}/prepaid/balance"
+            f"/v1/billing/teams/{self.xai_settings.team_id}/postpaid/invoice/preview"
         )
-        total = payload.get("total")
-        if not isinstance(total, dict):
-            raise ProviderError("invalid_response", "xAI response is missing total")
+        core_invoice = payload.get("coreInvoice")
+        if not isinstance(core_invoice, dict):
+            raise ProviderError("invalid_response", "xAI response is missing coreInvoice")
+        prepaid_credits = core_invoice.get("prepaidCredits")
+        if not isinstance(prepaid_credits, dict):
+            raise ProviderError(
+                "invalid_response",
+                "xAI response is missing coreInvoice.prepaidCredits",
+            )
+        prepaid_credits_used = core_invoice.get("prepaidCreditsUsed")
+        if not isinstance(prepaid_credits_used, dict):
+            raise ProviderError(
+                "invalid_response",
+                "xAI response is missing coreInvoice.prepaidCreditsUsed",
+            )
 
-        # Management API 以记账方向返回余额；可用预付额度是负数美分。
-        available = -decimal_value(total.get("val"), "total.val") / Decimal(100)
+        # 预充值额度按记账方向为负数，已使用额度为正数，单位均为美分。
+        prepaid = (
+            -decimal_value(
+                prepaid_credits.get("val"),
+                "coreInvoice.prepaidCredits.val",
+            )
+            / Decimal(100)
+        )
+        used = (
+            decimal_value(
+                prepaid_credits_used.get("val"),
+                "coreInvoice.prepaidCreditsUsed.val",
+            )
+            / Decimal(100)
+        )
+        available = prepaid - used
         return [
             BalanceReading(
                 provider=self.name,
                 currency="USD",
                 available_amount=available,
-                prepaid_amount=available,
+                prepaid_amount=prepaid,
                 granted_amount=None,
                 is_available=available > 0,
             )

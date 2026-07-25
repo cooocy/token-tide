@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from token_tide.config import ProviderSettings, XaiProviderSettings
+from token_tide.providers.base import ProviderError
 from token_tide.providers.deepseek import DeepSeekProvider
 from token_tide.providers.openrouter import OpenRouterProvider
 from token_tide.providers.siliconflow import SiliconFlowProvider
@@ -135,7 +136,7 @@ async def test_siliconflow_balance_components() -> None:
 
 
 @pytest.mark.asyncio
-async def test_xai_converts_negative_cents_to_available_usd() -> None:
+async def test_xai_subtracts_used_prepaid_credits_from_available_balance() -> None:
     settings = XaiProviderSettings.model_validate(
         {
             "enabled": True,
@@ -146,9 +147,45 @@ async def test_xai_converts_negative_cents_to_available_usd() -> None:
     )
     provider = XaiProvider(settings, 10)
     provider.get_json = AsyncMock(  # type: ignore[method-assign]
-        return_value={"changes": [], "total": {"val": "-1000"}}
+        return_value={
+            "coreInvoice": {
+                "prepaidCredits": {"val": "-500"},
+                "prepaidCreditsUsed": {"val": "135"},
+            }
+        }
     )
 
     readings = await provider.fetch_balance()
 
-    assert readings[0].available_amount == Decimal("10")
+    provider.get_json.assert_awaited_once_with(
+        "/v1/billing/teams/team-id/postpaid/invoice/preview"
+    )
+    assert readings[0].available_amount == Decimal("3.65")
+    assert readings[0].prepaid_amount == Decimal("5")
+    assert readings[0].is_available is True
+
+
+@pytest.mark.asyncio
+async def test_xai_requires_prepaid_usage_in_invoice_preview() -> None:
+    settings = XaiProviderSettings.model_validate(
+        {
+            "enabled": True,
+            "api-key": "management-secret",
+            "base-url": "https://management-api.x.ai",
+            "team-id": "team-id",
+        }
+    )
+    provider = XaiProvider(settings, 10)
+    provider.get_json = AsyncMock(  # type: ignore[method-assign]
+        return_value={
+            "coreInvoice": {
+                "prepaidCredits": {"val": "-500"},
+            }
+        }
+    )
+
+    with pytest.raises(
+        ProviderError,
+        match=r"xAI response is missing coreInvoice\.prepaidCreditsUsed",
+    ):
+        await provider.fetch_balance()
