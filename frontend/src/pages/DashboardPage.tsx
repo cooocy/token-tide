@@ -187,7 +187,6 @@ export default function DashboardPage() {
                 className={`provider-card ${status.className}`}
                 key={provider.provider}
               >
-                <span className="tide-node" aria-hidden="true" />
                 <div className="provider-card-heading">
                   <div className="provider-identity">
                     <ProviderMark provider={provider.provider} />

@@ -232,7 +232,18 @@ export default function ProviderHistoryPage() {
       {history && (
         <>
           <section className="balance-hero" aria-labelledby="history-balance-title">
-            <p className="section-kicker">AVAILABLE BALANCE</p>
+            <div className="balance-hero-heading">
+              <p className="section-kicker">AVAILABLE BALANCE</p>
+              <button
+                type="button"
+                className={`overview-refresh${refreshing ? ' is-refreshing' : ''}`}
+                onClick={handleRefresh}
+                disabled={refreshing || loading || !provider}
+              >
+                <RefreshIcon />
+                <span>{refreshing ? '刷新中' : '刷新'}</span>
+              </button>
+            </div>
             <div className="hero-value-row">
               <div>
                 <span id="history-balance-title">{selectedCurrency || '余额'}</span>
@@ -317,18 +328,6 @@ export default function ProviderHistoryPage() {
           </section>
         </>
       )}
-
-      <div className="action-dock">
-        <button
-          type="button"
-          className="primary-action"
-          onClick={handleRefresh}
-          disabled={refreshing || loading || !provider}
-        >
-          <RefreshIcon />
-          {refreshing ? '正在刷新平台…' : '刷新此平台'}
-        </button>
-      </div>
     </main>
   );
 }
