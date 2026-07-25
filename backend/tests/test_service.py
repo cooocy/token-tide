@@ -31,7 +31,6 @@ class StubProvider(BalanceProvider):
                 provider=self.name,
                 currency="USD",
                 available_amount=self.amount,
-                granted_amount=None,
                 is_available=True,
             )
         ]
@@ -100,6 +99,7 @@ async def test_latest_balance_keeps_last_success_after_failure(
     assert latest.status == "FAILED"
     assert latest.balances[0].available_amount == "12.34"
     assert "prepaid_amount" not in latest.balances[0].model_dump()
+    assert "granted_amount" not in latest.balances[0].model_dump()
     assert latest.last_success_at is not None
 
 

@@ -22,10 +22,6 @@ class DeepSeekProvider(BalanceProvider):
                     provider=self.name,
                     currency=currency,
                     available_amount=decimal_value(balance.get("total_balance"), "total_balance"),
-                    granted_amount=decimal_value(
-                        balance.get("granted_balance"),
-                        "granted_balance",
-                    ),
                     is_available=bool(payload.get("is_available")),
                 )
             )

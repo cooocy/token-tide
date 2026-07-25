@@ -96,12 +96,10 @@ async def test_deepseek_returns_each_currency() -> None:
                 {
                     "currency": "CNY",
                     "total_balance": "110.00",
-                    "granted_balance": "10.00",
                 },
                 {
                     "currency": "USD",
                     "total_balance": "5.00",
-                    "granted_balance": "0.00",
                 },
             ],
         }
@@ -111,17 +109,15 @@ async def test_deepseek_returns_each_currency() -> None:
 
     assert [reading.currency for reading in readings] == ["CNY", "USD"]
     assert readings[0].available_amount == Decimal("110.00")
-    assert readings[0].granted_amount == Decimal("10.00")
 
 
 @pytest.mark.asyncio
-async def test_siliconflow_balance_components() -> None:
+async def test_siliconflow_available_balance() -> None:
     provider = SiliconFlowProvider(provider_settings("https://api.siliconflow.com"), 10)
     provider.get_json = AsyncMock(  # type: ignore[method-assign]
         return_value={
             "status": True,
             "data": {
-                "balance": "0.88",
                 "totalBalance": "88.88",
             },
         }
@@ -130,7 +126,6 @@ async def test_siliconflow_balance_components() -> None:
     readings = await provider.fetch_balance()
 
     assert readings[0].available_amount == Decimal("88.88")
-    assert readings[0].granted_amount == Decimal("0.88")
 
 
 @pytest.mark.asyncio

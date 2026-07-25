@@ -15,7 +15,6 @@ class SiliconFlowProvider(BalanceProvider):
                 provider=self.name,
                 currency="CNY",
                 available_amount=available,
-                granted_amount=decimal_value(data.get("balance"), "balance"),
                 is_available=bool(payload.get("status")) and available > 0,
             )
         ]

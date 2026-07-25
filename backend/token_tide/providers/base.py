@@ -19,7 +19,6 @@ class BalanceReading:
     provider: str
     currency: str
     available_amount: Decimal
-    granted_amount: Decimal | None
     is_available: bool
 
 

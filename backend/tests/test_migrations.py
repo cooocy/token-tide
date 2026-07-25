@@ -54,3 +54,33 @@ def test_prepaid_amount_migration_drops_and_restores_column() -> None:
     assert "ALTER TABLE balance_snapshot ADD COLUMN prepaid_amount NUMERIC(20, 2)" in (
         downgrade_output.getvalue()
     )
+
+
+def test_granted_amount_migration_drops_and_restores_column() -> None:
+    revision = importlib.import_module(
+        "migrations.versions.202607251800_drop_granted_amount"
+    )
+
+    upgrade_output = StringIO()
+    upgrade_context = MigrationContext.configure(
+        dialect_name="mysql",
+        opts={"as_sql": True, "output_buffer": upgrade_output},
+    )
+    with Operations.context(upgrade_context):
+        revision.upgrade()
+
+    assert "ALTER TABLE balance_snapshot DROP COLUMN granted_amount" in (
+        upgrade_output.getvalue()
+    )
+
+    downgrade_output = StringIO()
+    downgrade_context = MigrationContext.configure(
+        dialect_name="mysql",
+        opts={"as_sql": True, "output_buffer": downgrade_output},
+    )
+    with Operations.context(downgrade_context):
+        revision.downgrade()
+
+    assert "ALTER TABLE balance_snapshot ADD COLUMN granted_amount NUMERIC(20, 2)" in (
+        downgrade_output.getvalue()
+    )

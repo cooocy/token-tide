@@ -24,7 +24,6 @@ class BalanceSnapshot(Base):
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
     currency: Mapped[str] = mapped_column(String(8), nullable=False)
     available_amount: Mapped[Decimal] = mapped_column(Numeric(20, 2), nullable=False)
-    granted_amount: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
     is_available: Mapped[bool] = mapped_column(Boolean, nullable=False)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

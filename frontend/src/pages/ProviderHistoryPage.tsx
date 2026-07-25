@@ -74,7 +74,6 @@ export default function ProviderHistoryPage() {
                 <th>时间</th>
                 <th>币种</th>
                 <th>可用余额</th>
-                <th>赠送余额</th>
               </tr>
             </thead>
             <tbody>
@@ -83,7 +82,6 @@ export default function ProviderHistoryPage() {
                   <td>{new Date(point.observed_at).toLocaleString()}</td>
                   <td>{point.currency}</td>
                   <td>{point.available_amount}</td>
-                  <td>{point.granted_amount ?? '—'}</td>
                 </tr>
               ))}
             </tbody>

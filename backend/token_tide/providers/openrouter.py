@@ -17,7 +17,6 @@ class OpenRouterProvider(BalanceProvider):
                 provider=self.name,
                 currency="USD",
                 available_amount=available,
-                granted_amount=None,
                 is_available=available > 0,
             )
         ]

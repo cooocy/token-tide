@@ -86,7 +86,6 @@ class BalanceService:
                             provider=reading.provider,
                             currency=reading.currency,
                             available_amount=normalize_amount(reading.available_amount),
-                            granted_amount=normalize_amount(reading.granted_amount),
                             is_available=reading.is_available,
                             observed_at=finished_at,
                         )
@@ -245,7 +244,6 @@ class BalanceService:
         return BalanceValue(
             currency=snapshot.currency,
             available_amount=decimal_string(snapshot.available_amount) or "0",
-            granted_amount=decimal_string(snapshot.granted_amount),
             is_available=snapshot.is_available,
             observed_at=snapshot.observed_at,
         )
