@@ -63,8 +63,8 @@ stop_running_process() {
 }
 
 if [[ ! -x "${PYTHON_BIN}" ]]; then
-    echo "Python 3.13 executable not found: ${PYTHON_BIN}" >&2
-    echo "Set PYTHON_BIN to the Python 3.13+ executable path." >&2
+    echo "Python 3.12 executable not found: ${PYTHON_BIN}" >&2
+    echo "Set PYTHON_BIN to the Python 3.12+ executable path." >&2
     exit 1
 fi
 
@@ -90,7 +90,7 @@ if ! "${VENV_DIR}/bin/python" -m pip install --upgrade "${PROJECT_ROOT}" >>"${IN
 fi
 
 echo "Applying database migrations"
-if ! "${VENV_DIR}/bin/alembic" -c "${PROJECT_ROOT}/alembic.ini" upgrade head >>"${ALEMBIC_LOG}" 2>&1; then
+if ! "${VENV_DIR}/bin/alembic" -c "${PROJECT_ROOT}/alembic.ini" upgrade head >/dev/null 2>&1; then
     echo "Database migration failed, check: ${ALEMBIC_LOG}" >&2
     exit 1
 fi
@@ -101,8 +101,7 @@ if [[ -z "${token_tide_commit}" ]]; then
 fi
 
 echo "Starting token-tide, commit: ${token_tide_commit}"
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] starting token-tide commit=${token_tide_commit}" >>"${APP_LOG}"
-nohup "${VENV_DIR}/bin/token-tide" >>"${APP_LOG}" 2>&1 &
+TOKEN_TIDE_COMMIT="${token_tide_commit}" nohup "${VENV_DIR}/bin/token-tide" >/dev/null 2>&1 &
 new_pid=$!
 echo "${new_pid}" >"${PID_FILE}"
 
@@ -115,5 +114,6 @@ fi
 
 echo "token-tide started, PID: ${new_pid}"
 echo "Application log: ${APP_LOG}"
+echo "Uvicorn log: ${LOG_DIR}/uvicorn.log"
 echo "Install log: ${INSTALL_LOG}"
 echo "Alembic log: ${ALEMBIC_LOG}"

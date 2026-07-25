@@ -1,12 +1,12 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ApplicationInfo(BaseModel):
     app: str
-    version: str
-    timestamp: datetime
+    ts: str
+    token_tide_commit: str = Field(alias="TOKEN_TIDE_COMMIT")
 
 
 class BalanceValue(BaseModel):

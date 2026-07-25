@@ -15,7 +15,7 @@ TokenTide 是一个聚合 AI 平台预充值余额与余额历史的单用户 Da
 
 ## 环境要求
 
-- Python 3.13+
+- Python 3.12+
 - Node.js 20+
 - pnpm 10+
 - MySQL 8+
@@ -36,25 +36,38 @@ CREATE DATABASE token_tide
 
 ```bash
 cd backend
-python3.13 -m venv .venv
+python3.12 -m venv .venv
 .venv/bin/pip install -e '.[test]'
 ```
 
 ### 3. 配置
 
-```bash
-cp application-example.yaml application-local.yaml
+`application-example.yaml` 只用于说明配置结构。实际配置存放在远端配置仓库的：
+
+```text
+token-tide/application-{CONFIGURATION_TAIL}.yaml
 ```
 
-编辑 `application-local.yaml`：
+启动时通过 Bookstore 下载到 `backend/application-{CONFIGURATION_TAIL}.yaml`。支持以下配置源：
 
-- 修改 `database.url`
-- 启用需要的平台
-- 填入对应 API Key
-- xAI 必须使用 Management API Key，并配置 Team ID
-- 根据需要修改刷新 cron 和时区
+```bash
+# GitHub Raw
+export BOOKSTORE_ENGINE=github
+export BOOKSTORE_GITHUB_URL=https://raw.githubusercontent.com/<owner>/<repo>/main
+export BOOKSTORE_GITHUB_TOKEN=<token>
 
-实际 `application-*.yaml` 已被 Git 忽略，示例配置不会包含真实密钥。
+# GitLab Repository Files API
+export BOOKSTORE_ENGINE=gitlab
+export BOOKSTORE_GITLAB_URL=https://gitlab.example/api/v4/projects/<id>/repository/files
+export BOOKSTORE_GITLAB_TOKEN=<token>
+
+# 阿里云 Codeup Files API
+export BOOKSTORE_ENGINE=codeup
+export BOOKSTORE_CODEUP_URL=https://openapi-rdc.aliyuncs.com/oapi/v1/codeup/organizations/<org>/repositories/<repo>/files
+export BOOKSTORE_CODEUP_TOKEN=<token>
+```
+
+三组凭证只需配置当前 `BOOKSTORE_ENGINE` 对应的一组。下载失败、内容为空或 YAML 校验失败时，迁移和应用都会立即停止。运行时配置文件已被 Git 忽略。
 
 ### 4. 迁移与启动
 
@@ -70,7 +83,7 @@ export CONFIGURATION_TAIL=local
 CONFIGURATION_TAIL=local ./start.sh
 ```
 
-`start.sh` 会创建或复用 `.venv`、更新安装 TokenTide、执行数据库迁移、安全停止旧进程并以后台进程重新启动。默认 Python 路径为 `/opt/python/3.13.0/bin/python3`，其他安装位置可通过 `PYTHON_BIN` 指定：
+`start.sh` 会创建或复用 `.venv`、更新安装 TokenTide、下载配置、执行数据库迁移、安全停止旧进程并以后台进程重新启动。默认 Python 路径为 `/opt/python/3.12.13/bin/python3`，其他安装位置可通过 `PYTHON_BIN` 指定：
 
 ```bash
 CONFIGURATION_TAIL=local \
@@ -78,7 +91,7 @@ PYTHON_BIN=/path/to/python3 \
 ./start.sh
 ```
 
-运行时 PID 保存在 `backend/run/token-tide.pid`，应用、安装和迁移日志分别写入 `backend/logs/app.log`、`install.log` 和 `alembic.log`。
+运行时 PID 保存在 `backend/run/token-tide.pid`。应用、Uvicorn、安装和迁移日志分别写入 `backend/logs/app.log`、`uvicorn.log`、`install.log` 和 `alembic.log`；Python 日志按单文件 20 MiB、保留 10 份滚动。
 
 APScheduler 当前运行在 Web 进程内。生产环境只能启动一个后端 Worker，否则每个 Worker 都会执行定时刷新。
 
@@ -131,3 +144,7 @@ pnpm dev
 - API Key 不写入数据库、不返回前端、不输出日志
 - 不保存平台原始响应
 - 不保存账号密码、Cookie，也不抓取网页或调用私有接口
+
+## Python 服务规范
+
+后续修改后端前，请阅读仓库根目录的 `python_server_convention.md`。服务器通过普通 wheel 安装运行；源码发生变化后需要重新执行 `pip install --upgrade`，不能依赖工作目录直接导入源码。

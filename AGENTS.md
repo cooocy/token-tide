@@ -58,3 +58,7 @@ Example:
 - 改完代码直接告诉我变更点，编译、类型检查、构建、启动由我执行。
 - 如果确实需要启动项目来验证，先告诉我，由我决定是否启。
 - 可以做的：读代码、改代码。
+
+## Python 服务规范
+
+修改 Python 服务代码、配置、迁移、测试、日志或部署脚本前，必须阅读并遵循 [python_server_convention.md](python_server_convention.md)。
