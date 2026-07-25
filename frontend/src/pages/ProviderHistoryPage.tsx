@@ -6,10 +6,10 @@ import {
   type BalanceHistory,
 } from '@/api/balance';
 import BalanceTrendChart from '@/components/BalanceTrendChart';
+import ProviderMark from '@/components/ProviderMark';
 import {
   formatAmount,
   formatDateTime,
-  formatProviderMark,
   formatProviderName,
   formatSignedAmount,
 } from '@/lib/display';
@@ -192,9 +192,7 @@ export default function ProviderHistoryPage() {
           <BackIcon />
         </Link>
         <div className="history-provider">
-          <span className="provider-mark" aria-hidden="true">
-            {formatProviderMark(provider)}
-          </span>
+          <ProviderMark provider={provider} />
           <div>
             <p>{formatProviderName(provider)}</p>
             <span>余额历史</span>

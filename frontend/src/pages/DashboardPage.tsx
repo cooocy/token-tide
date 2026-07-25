@@ -6,9 +6,9 @@ import {
   type ProviderBalance,
   type ProviderStatus,
 } from '@/api/balance';
+import ProviderMark from '@/components/ProviderMark';
 import {
   formatAmount,
-  formatProviderMark,
   formatProviderName,
   formatRelativeTime,
 } from '@/lib/display';
@@ -121,9 +121,20 @@ export default function DashboardPage() {
       </header>
 
       <section className="overview-heading" aria-labelledby="overview-title">
-        <p className="section-kicker">CURRENT TIDE</p>
-        <h1 id="overview-title">平台余额</h1>
-        <p>{formatRelativeTime(summary.latestSuccess)}</p>
+        <div>
+          <p className="section-kicker">CURRENT TIDE</p>
+          <h1 id="overview-title">平台余额</h1>
+          <p>{formatRelativeTime(summary.latestSuccess)}</p>
+        </div>
+        <button
+          type="button"
+          className={`overview-refresh${refreshing ? ' is-refreshing' : ''}`}
+          onClick={handleRefresh}
+          disabled={refreshing || loading}
+        >
+          <RefreshIcon />
+          <span>{refreshing ? '刷新中' : '刷新'}</span>
+        </button>
       </section>
 
       <div className="message-stack" aria-live="polite">
@@ -179,9 +190,7 @@ export default function DashboardPage() {
                 <span className="tide-node" aria-hidden="true" />
                 <div className="provider-card-heading">
                   <div className="provider-identity">
-                    <span className="provider-mark" aria-hidden="true">
-                      {formatProviderMark(provider.provider)}
-                    </span>
+                    <ProviderMark provider={provider.provider} />
                     <div>
                       <h2>{formatProviderName(provider.provider)}</h2>
                       <p className="provider-status">
@@ -230,17 +239,6 @@ export default function DashboardPage() {
         </section>
       )}
 
-      <div className="action-dock">
-        <button
-          type="button"
-          className="primary-action"
-          onClick={handleRefresh}
-          disabled={refreshing || loading}
-        >
-          <RefreshIcon />
-          {refreshing ? '正在刷新所有平台…' : '刷新全部平台'}
-        </button>
-      </div>
     </main>
   );
 }

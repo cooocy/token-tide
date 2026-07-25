@@ -193,7 +193,15 @@ svg {
 }
 
 .overview-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
   padding: 52px 0 31px;
+}
+
+.overview-heading > div {
+  min-width: 0;
 }
 
 .section-kicker {
@@ -214,10 +222,44 @@ svg {
   line-height: 0.98;
 }
 
-.overview-heading > p:last-child {
+.overview-heading > div > p:last-child {
   margin-top: 13px;
   color: var(--muted);
   font-size: 0.82rem;
+}
+
+.overview-refresh {
+  display: inline-flex;
+  min-width: 92px;
+  min-height: 42px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 2px;
+  padding: 0 14px;
+  border: 1px solid rgba(50, 214, 197, 0.32);
+  border-radius: 13px;
+  color: var(--current);
+  background: rgba(50, 214, 197, 0.07);
+  cursor: pointer;
+  font-family: var(--display-font);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.overview-refresh svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.9;
+}
+
+.overview-refresh.is-refreshing svg {
+  animation: refresh-spin 1.2s linear infinite;
 }
 
 .message-stack {
@@ -266,16 +308,6 @@ svg {
   display: grid;
   gap: 12px;
   padding-left: 34px;
-}
-
-.provider-stack::before {
-  position: absolute;
-  top: 21px;
-  bottom: 21px;
-  left: 9px;
-  width: 1px;
-  background: rgba(50, 214, 197, 0.28);
-  content: "";
 }
 
 .provider-card {
@@ -347,6 +379,17 @@ svg {
   font-family: var(--data-font);
   font-size: 0.68rem;
   letter-spacing: -0.04em;
+}
+
+.provider-mark.has-logo {
+  border-color: var(--line);
+  background: rgba(231, 245, 244, 0.04);
+}
+
+.provider-mark img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
 }
 
 .provider-card h2 {
