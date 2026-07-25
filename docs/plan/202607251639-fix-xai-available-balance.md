@@ -9,10 +9,10 @@ xAI 控制台显示预充值 `$5.00`、已使用 `$1.35`、剩余 `$3.65`，Toke
 ## 实施方案
 
 1. 将 xAI 余额数据源切换为 `/v1/billing/teams/{team_id}/postpaid/invoice/preview`。
-2. 从 `coreInvoice.prepaidCredits.val` 读取预充值额度，从 `coreInvoice.prepaidCreditsUsed.val` 读取已使用额度；两者均按美分转换为美元。
+2. 从 `coreInvoice.prepaidCredits.val` 读取预充值额度，从 `coreInvoice.prepaidCreditsUsed.val` 读取已使用额度；两者先取金额绝对值，再按美分转换为美元，以兼容账务字段的正负记账方向。
 3. 按 xAI 的记账方向计算：
-   - 充值余额：`-prepaidCredits / 100`
-   - 可用余额：`(-prepaidCredits - prepaidCreditsUsed) / 100`
+   - 充值余额：`abs(prepaidCredits) / 100`
+   - 可用余额：`(abs(prepaidCredits) - abs(prepaidCreditsUsed)) / 100`
 4. 对缺失或类型错误的 `coreInvoice`、`prepaidCredits`、`prepaidCreditsUsed` 保持统一的 `invalid_response` 错误处理。
 5. 更新 Provider 单元测试，覆盖 `$5.00 - $1.35 = $3.65`、请求路径与响应结构校验。
 

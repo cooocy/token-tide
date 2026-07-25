@@ -31,18 +31,22 @@ class XaiProvider(BalanceProvider):
                 "xAI response is missing coreInvoice.prepaidCreditsUsed",
             )
 
-        # 预充值额度按记账方向为负数，已使用额度为正数，单位均为美分。
+        # xAI 的账务字段可能以负数表示额度变动；统一取金额绝对值后再计算余额。
         prepaid = (
-            -decimal_value(
-                prepaid_credits.get("val"),
-                "coreInvoice.prepaidCredits.val",
+            abs(
+                decimal_value(
+                    prepaid_credits.get("val"),
+                    "coreInvoice.prepaidCredits.val",
+                )
             )
             / Decimal(100)
         )
         used = (
-            decimal_value(
-                prepaid_credits_used.get("val"),
-                "coreInvoice.prepaidCreditsUsed.val",
+            abs(
+                decimal_value(
+                    prepaid_credits_used.get("val"),
+                    "coreInvoice.prepaidCreditsUsed.val",
+                )
             )
             / Decimal(100)
         )

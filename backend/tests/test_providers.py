@@ -136,7 +136,10 @@ async def test_siliconflow_balance_components() -> None:
 
 
 @pytest.mark.asyncio
-async def test_xai_subtracts_used_prepaid_credits_from_available_balance() -> None:
+@pytest.mark.parametrize("used_value", ["135", "-135"])
+async def test_xai_subtracts_used_prepaid_credits_from_available_balance(
+    used_value: str,
+) -> None:
     settings = XaiProviderSettings.model_validate(
         {
             "enabled": True,
@@ -150,7 +153,7 @@ async def test_xai_subtracts_used_prepaid_credits_from_available_balance() -> No
         return_value={
             "coreInvoice": {
                 "prepaidCredits": {"val": "-500"},
-                "prepaidCreditsUsed": {"val": "135"},
+                "prepaidCreditsUsed": {"val": used_value},
             }
         }
     )
