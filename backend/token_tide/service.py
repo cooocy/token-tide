@@ -5,13 +5,14 @@ from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import overload
 
-from sqlalchemy import Select, desc, select
+from sqlalchemy import Select, and_, desc, or_, select
 from sqlalchemy.orm import Session
 
 from token_tide.models import BalanceSnapshot, RefreshRun
 from token_tide.providers.base import BalanceProvider, ProviderError
 from token_tide.response import ApplicationError
 from token_tide.schemas import (
+    BalanceChangeType,
     BalanceHistory,
     BalanceValue,
     HistoryPoint,
@@ -141,14 +142,18 @@ class BalanceService:
             statement = statement.where(BalanceSnapshot.observed_at >= start_time)
         if end_time:
             statement = statement.where(BalanceSnapshot.observed_at <= end_time)
-        statement = statement.order_by(desc(BalanceSnapshot.observed_at)).limit(limit)
+        statement = statement.order_by(
+            desc(BalanceSnapshot.observed_at),
+            desc(BalanceSnapshot.id),
+        ).limit(limit)
 
         with self.session_factory() as session:
             snapshots = list(reversed(session.scalars(statement).all()))
+            points = self._history_points(session, snapshots)
         return BalanceHistory(
             provider=provider_name,
             currency=normalized_currency,
-            points=[self._history_point(snapshot) for snapshot in snapshots],
+            points=points,
         )
 
     def _create_refresh_run(self, provider: str, trigger: str, started_at: datetime) -> int:
@@ -248,6 +253,72 @@ class BalanceService:
             observed_at=snapshot.observed_at,
         )
 
+    def _history_points(
+        self,
+        session: Session,
+        snapshots: list[BalanceSnapshot],
+    ) -> list[HistoryPoint]:
+        first_by_currency: dict[str, BalanceSnapshot] = {}
+        for snapshot in snapshots:
+            first_by_currency.setdefault(snapshot.currency, snapshot)
+
+        previous_by_currency = {
+            currency: self._previous_snapshot(session, first)
+            for currency, first in first_by_currency.items()
+        }
+        points: list[HistoryPoint] = []
+        for snapshot in snapshots:
+            previous = previous_by_currency.get(snapshot.currency)
+            points.append(self._history_point(snapshot, previous))
+            previous_by_currency[snapshot.currency] = snapshot
+        return points
+
+    @staticmethod
+    def _previous_snapshot(
+        session: Session,
+        snapshot: BalanceSnapshot,
+    ) -> BalanceSnapshot | None:
+        return session.scalar(
+            select(BalanceSnapshot)
+            .where(
+                BalanceSnapshot.provider == snapshot.provider,
+                BalanceSnapshot.currency == snapshot.currency,
+                or_(
+                    BalanceSnapshot.observed_at < snapshot.observed_at,
+                    and_(
+                        BalanceSnapshot.observed_at == snapshot.observed_at,
+                        BalanceSnapshot.id < snapshot.id,
+                    ),
+                ),
+            )
+            .order_by(
+                desc(BalanceSnapshot.observed_at),
+                desc(BalanceSnapshot.id),
+            )
+            .limit(1)
+        )
+
     @classmethod
-    def _history_point(cls, snapshot: BalanceSnapshot) -> HistoryPoint:
-        return HistoryPoint(**cls._balance_value(snapshot).model_dump())
+    def _history_point(
+        cls,
+        snapshot: BalanceSnapshot,
+        previous: BalanceSnapshot | None,
+    ) -> HistoryPoint:
+        change_amount: Decimal | None = None
+        change_type: BalanceChangeType | None = None
+        if previous is not None:
+            change_amount = normalize_amount(
+                snapshot.available_amount - previous.available_amount
+            )
+            if change_amount > 0:
+                change_type = "SUPPLY"
+            elif change_amount < 0:
+                change_type = "CONSUMPTION"
+            else:
+                change_type = "UNCHANGED"
+
+        return HistoryPoint(
+            **cls._balance_value(snapshot).model_dump(),
+            change_amount=decimal_string(change_amount),
+            change_type=change_type,
+        )

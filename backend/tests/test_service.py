@@ -103,6 +103,123 @@ def test_latest_balances_preserves_provider_order(
     assert [provider.provider for provider in latest] == ["second", "first"]
 
 
+def test_balance_history_identifies_supply_consumption_and_unchanged(
+    session_factory: sessionmaker[Session],
+) -> None:
+    service = BalanceService({"stub": StubProvider()}, session_factory)
+    observed_at = datetime(2026, 7, 26, 8, tzinfo=UTC)
+    with session_factory() as session:
+        session.add_all(
+            [
+                BalanceSnapshot(
+                    provider="stub",
+                    currency="USD",
+                    available_amount=amount,
+                    is_available=True,
+                    observed_at=observed_at + timedelta(hours=index),
+                )
+                for index, amount in enumerate(
+                    [
+                        Decimal("10.00"),
+                        Decimal("7.50"),
+                        Decimal("12.00"),
+                        Decimal("12.00"),
+                    ]
+                )
+            ]
+        )
+        session.commit()
+
+    history = service.balance_history("stub", "USD", None, None, 100)
+
+    assert [
+        (point.change_amount, point.change_type)
+        for point in history.points
+    ] == [
+        (None, None),
+        ("-2.50", "CONSUMPTION"),
+        ("4.50", "SUPPLY"),
+        ("0.00", "UNCHANGED"),
+    ]
+
+
+def test_balance_history_uses_preceding_snapshot_outside_limit(
+    session_factory: sessionmaker[Session],
+) -> None:
+    service = BalanceService({"stub": StubProvider()}, session_factory)
+    observed_at = datetime(2026, 7, 26, 8, tzinfo=UTC)
+    with session_factory() as session:
+        session.add_all(
+            [
+                BalanceSnapshot(
+                    provider="stub",
+                    currency="USD",
+                    available_amount=amount,
+                    is_available=True,
+                    observed_at=observed_at + timedelta(hours=index),
+                )
+                for index, amount in enumerate(
+                    [Decimal("10.00"), Decimal("8.00"), Decimal("18.00")]
+                )
+            ]
+        )
+        session.add(
+            BalanceSnapshot(
+                provider="stub",
+                currency="EUR",
+                available_amount=Decimal("8.00"),
+                is_available=True,
+                observed_at=observed_at + timedelta(minutes=30),
+            )
+        )
+        session.commit()
+
+    history = service.balance_history("stub", "USD", None, None, 1)
+
+    assert len(history.points) == 1
+    assert history.points[0].change_amount == "10.00"
+    assert history.points[0].change_type == "SUPPLY"
+
+
+def test_balance_history_keeps_currency_changes_isolated(
+    session_factory: sessionmaker[Session],
+) -> None:
+    service = BalanceService({"stub": StubProvider()}, session_factory)
+    observed_at = datetime(2026, 7, 26, 8, tzinfo=UTC)
+    snapshots = [
+        ("USD", Decimal("10.00")),
+        ("EUR", Decimal("50.00")),
+        ("USD", Decimal("9.00")),
+        ("EUR", Decimal("70.00")),
+    ]
+    with session_factory() as session:
+        session.add_all(
+            [
+                BalanceSnapshot(
+                    provider="stub",
+                    currency=currency,
+                    available_amount=amount,
+                    is_available=True,
+                    observed_at=observed_at + timedelta(hours=index),
+                )
+                for index, (currency, amount) in enumerate(snapshots)
+            ]
+        )
+        session.commit()
+
+    history = service.balance_history("stub", None, None, None, 100)
+
+    assert [
+        (point.currency, point.change_amount, point.change_type)
+        for point in history.points
+    ] == [
+        ("USD", None, None),
+        ("EUR", None, None),
+        ("USD", "-1.00", "CONSUMPTION"),
+        ("EUR", "20.00", "SUPPLY"),
+    ]
+
+
 @pytest.mark.asyncio
 async def test_latest_balance_keeps_last_success_after_failure(
     session_factory: sessionmaker[Session],

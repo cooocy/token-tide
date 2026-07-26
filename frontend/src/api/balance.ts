@@ -9,6 +9,13 @@ export interface BalanceValue {
   observed_at: string;
 }
 
+export type BalanceChangeType = 'SUPPLY' | 'CONSUMPTION' | 'UNCHANGED';
+
+export interface BalanceHistoryPoint extends BalanceValue {
+  change_amount: string | null;
+  change_type: BalanceChangeType | null;
+}
+
 export interface ProviderBalance {
   provider: string;
   status: ProviderStatus;
@@ -22,7 +29,7 @@ export interface ProviderBalance {
 export interface BalanceHistory {
   provider: string;
   currency: string | null;
-  points: BalanceValue[];
+  points: BalanceHistoryPoint[];
 }
 
 export interface HistoryQuery {

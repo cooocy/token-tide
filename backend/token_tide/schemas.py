@@ -1,6 +1,9 @@
 from datetime import UTC, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_serializer
+
+BalanceChangeType = Literal["SUPPLY", "CONSUMPTION", "UNCHANGED"]
 
 
 def serialize_utc_datetime(value: datetime | None) -> str | None:
@@ -45,7 +48,8 @@ class ProviderBalance(BaseModel):
 
 
 class HistoryPoint(BalanceValue):
-    pass
+    change_amount: str | None = None
+    change_type: BalanceChangeType | None = None
 
 
 class BalanceHistory(BaseModel):

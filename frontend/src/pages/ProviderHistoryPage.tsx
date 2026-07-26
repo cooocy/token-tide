@@ -139,11 +139,30 @@ export default function ProviderHistoryPage() {
     [history],
   );
   const latestPoint = points.at(-1);
-  const firstPoint = points[0];
-  const change =
-    latestPoint && firstPoint
-      ? Number(latestPoint.available_amount) - Number(firstPoint.available_amount)
-      : 0;
+  const flowSummary = useMemo(
+    () =>
+      points.reduce(
+        (summary, point) => {
+          if (point.change_amount === null) {
+            return summary;
+          }
+          const amount = Number(point.change_amount);
+          if (!Number.isFinite(amount)) {
+            return summary;
+          }
+          if (point.change_type === 'SUPPLY') {
+            summary.supply += amount;
+          } else if (point.change_type === 'CONSUMPTION') {
+            summary.consumption += Math.abs(amount);
+          }
+          summary.change += amount;
+          summary.hasEvents = true;
+          return summary;
+        },
+        { supply: 0, consumption: 0, change: 0, hasEvents: false },
+      ),
+    [points],
+  );
 
   return (
     <main className="app-shell history-page" aria-busy={loading}>
@@ -201,13 +220,17 @@ export default function ProviderHistoryPage() {
                   {latestPoint ? formatAmount(latestPoint.available_amount) : '—'}
                 </strong>
               </div>
-              {points.length > 1 && Number.isFinite(change) && (
+              {flowSummary.hasEvents && (
                 <span
                   className={`balance-change ${
-                    change > 0 ? 'is-positive' : change < 0 ? 'is-negative' : ''
+                    flowSummary.change > 0
+                      ? 'is-positive'
+                      : flowSummary.change < 0
+                        ? 'is-negative'
+                        : ''
                   }`}
                 >
-                  {formatSignedAmount(change)}
+                  {formatSignedAmount(flowSummary.change)}
                   <small>本段变化</small>
                 </span>
               )}
@@ -229,6 +252,27 @@ export default function ProviderHistoryPage() {
               </div>
             )}
           </section>
+
+          {flowSummary.hasEvents && (
+            <section className="flow-summary" aria-label="本段余额变化汇总">
+              <div className="flow-summary-item is-supply">
+                <span>本段补给</span>
+                <strong>+{formatAmount(flowSummary.supply.toFixed(2))}</strong>
+              </div>
+              <div
+                className={`flow-summary-item ${
+                  flowSummary.consumption > 0 ? 'is-consumption' : ''
+                }`}
+              >
+                <span>本段消耗</span>
+                <strong>
+                  {flowSummary.consumption > 0
+                    ? `-${formatAmount(flowSummary.consumption.toFixed(2))}`
+                    : '0'}
+                </strong>
+              </div>
+            </section>
+          )}
 
           <section className={`chart-panel ${loading ? 'is-loading' : ''}`}>
             <div className="section-heading">
@@ -262,15 +306,38 @@ export default function ProviderHistoryPage() {
             ) : (
               <ol className="record-list">
                 {[...points].reverse().map((point, index) => (
-                  <li key={`${point.currency}-${point.observed_at}`}>
+                  <li
+                    className={
+                      point.change_type
+                        ? `is-${point.change_type.toLowerCase()}`
+                        : undefined
+                    }
+                    key={`${point.currency}-${point.observed_at}`}
+                  >
                     <span className="record-node" aria-hidden="true" />
                     <div>
                       <time dateTime={point.observed_at}>
                         {formatDateTime(point.observed_at)}
                       </time>
                       {index === 0 && <span className="latest-label">最新</span>}
+                      {point.change_type && (
+                        <span className="record-event">
+                          {point.change_type === 'SUPPLY'
+                            ? '补给'
+                            : point.change_type === 'CONSUMPTION'
+                              ? '消耗'
+                              : '无变化'}
+                        </span>
+                      )}
                     </div>
-                    <strong>{formatAmount(point.available_amount)}</strong>
+                    <div className="record-values">
+                      <strong>{formatAmount(point.available_amount)}</strong>
+                      {point.change_amount !== null && (
+                        <span>
+                          {formatSignedAmount(Number(point.change_amount))}
+                        </span>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ol>

@@ -696,6 +696,47 @@ svg {
   background: rgba(50, 214, 197, 0.08);
 }
 
+.flow-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.flow-summary-item {
+  min-width: 0;
+  padding: 15px 17px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+}
+
+.flow-summary-item span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.flow-summary-item strong {
+  display: block;
+  margin-top: 7px;
+  overflow: hidden;
+  font-family: var(--data-font);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-summary-item.is-supply strong {
+  color: var(--current);
+}
+
+.flow-summary-item.is-consumption strong {
+  color: var(--alert);
+}
+
 .chart-panel,
 .history-records {
   border: 1px solid var(--line);
@@ -888,6 +929,50 @@ svg {
   font-weight: 600;
 }
 
+.record-event {
+  display: inline-flex;
+  min-height: 20px;
+  align-items: center;
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(168, 207, 203, 0.08);
+  font-size: 0.58rem;
+}
+
+.record-list li.is-supply .record-node {
+  background: var(--current);
+}
+
+.record-list li.is-supply .record-event,
+.record-list li.is-supply .record-values span {
+  color: var(--current);
+}
+
+.record-list li.is-consumption .record-node {
+  background: var(--alert);
+}
+
+.record-list li.is-consumption .record-event,
+.record-list li.is-consumption .record-values span {
+  color: var(--alert);
+}
+
+.record-values {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.record-values span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-family: var(--data-font);
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .latest-label {
   display: inline-flex;
   min-height: 20px;
@@ -943,12 +1028,17 @@ svg {
   .history-header,
   .history-page > .message-stack,
   .history-skeleton,
-  .balance-hero {
+  .balance-hero,
+  .flow-summary {
     grid-column: 1 / -1;
   }
 
   .balance-hero {
     padding-bottom: 26px;
+  }
+
+  .flow-summary {
+    margin-bottom: 0;
   }
 
   .chart-panel,
