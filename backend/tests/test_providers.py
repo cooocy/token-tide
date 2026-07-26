@@ -5,9 +5,14 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from token_tide.config import ProviderSettings, XaiProviderSettings
+from token_tide.config import (
+    OpenCodeProviderSettings,
+    ProviderSettings,
+    XaiProviderSettings,
+)
 from token_tide.providers.base import ProviderError
 from token_tide.providers.deepseek import DeepSeekProvider
+from token_tide.providers.opencode import OpenCodeProvider, parse_balance_response
 from token_tide.providers.openrouter import OpenRouterProvider
 from token_tide.providers.siliconflow import SiliconFlowProvider
 from token_tide.providers.xai import XaiProvider
@@ -184,3 +189,93 @@ async def test_xai_requires_prepaid_usage_in_invoice_preview() -> None:
         match=r"xAI response is missing coreInvoice\.prepaidCreditsUsed",
     ):
         await provider.fetch_balance()
+
+
+def opencode_settings(
+    proxy_url: str | None = None,
+) -> OpenCodeProviderSettings:
+    values: dict[str, object] = {
+        "enabled": True,
+        "auth-cookie": "auth=session-secret",
+        "workspace-id": "wrk_01EXAMPLE",
+        "base-url": "https://opencode.ai",
+    }
+    if proxy_url is not None:
+        values["proxy-url"] = proxy_url
+    return OpenCodeProviderSettings.model_validate(values)
+
+
+@pytest.mark.asyncio
+async def test_opencode_requests_billing_rpc_without_redirects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    class StubResponse:
+        text = '{"billing":{"customerID":"cus_example","balance":1916000000}}'
+
+        def raise_for_status(self) -> None:
+            pass
+
+    class StubClient:
+        def __init__(self, **kwargs: Any) -> None:
+            captured.update(kwargs)
+
+        async def __aenter__(self) -> "StubClient":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            pass
+
+        async def get(
+            self,
+            path: str,
+            **kwargs: Any,
+        ) -> StubResponse:
+            captured["path"] = path
+            captured.update(kwargs)
+            return StubResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", StubClient)
+    provider = OpenCodeProvider(
+        opencode_settings("http://127.0.0.1:3128"),
+        10,
+    )
+
+    readings = await provider.fetch_balance()
+
+    assert captured["base_url"] == "https://opencode.ai"
+    assert captured["proxy"] == "http://127.0.0.1:3128/"
+    assert captured["trust_env"] is False
+    assert captured["follow_redirects"] is False
+    assert captured["path"] == "/_server"
+    assert captured["params"]["args"] == '["wrk_01EXAMPLE"]'
+    assert captured["headers"]["Cookie"] == "auth=session-secret"
+    assert captured["headers"]["Origin"] == "https://opencode.ai"
+    assert readings[0].available_amount == Decimal("19.16")
+    assert readings[0].currency == "USD"
+
+
+def test_opencode_parses_server_javascript_response() -> None:
+    response = (
+        '{customerID:$R[0]="cus_example",'
+        'balance:$R[1]=1916000000}'
+    )
+
+    assert parse_balance_response(response) == Decimal("19.16")
+
+
+def test_opencode_requires_customer_context() -> None:
+    with pytest.raises(
+        ProviderError,
+        match="OpenCode response is missing customer context",
+    ):
+        parse_balance_response('{"balance":1916000000}')
+
+
+def test_opencode_recognizes_expired_session_response() -> None:
+    with pytest.raises(
+        ProviderError,
+        match="OpenCode session cookie is invalid or expired",
+    ):
+        parse_balance_response('Actor of type "public" cannot access workspace')

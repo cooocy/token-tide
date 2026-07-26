@@ -41,3 +41,11 @@ providers:
     # 可选，例如：http://127.0.0.1:3128
     proxy-url: null
     team-id: ""
+  # 实验性接入：依赖 OpenCode Web Dashboard 内部接口。
+  opencode:
+    enabled: false
+    # 支持 Cookie value、单枚 auth Cookie 或包含 auth 的完整 Cookie Header。
+    auth-cookie: ""
+    workspace-id: ""
+    base-url: https://opencode.ai
+    proxy-url: null

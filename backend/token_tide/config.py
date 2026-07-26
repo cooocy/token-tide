@@ -1,4 +1,5 @@
 import os
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -11,6 +12,7 @@ from pydantic import (
     Field,
     SecretStr,
     ValidationError,
+    field_validator,
     model_validator,
 )
 
@@ -50,11 +52,14 @@ class RefreshSettings(ConfigurationModel):
     timezone: str = Field(min_length=1)
 
 
-class ProviderSettings(ConfigurationModel):
+class ProviderConnectionSettings(ConfigurationModel):
     enabled: bool = False
-    api_key: SecretStr = SecretStr("")
     base_url: str = Field(min_length=1)
     proxy_url: AnyHttpUrl | None = None
+
+
+class ProviderSettings(ProviderConnectionSettings):
+    api_key: SecretStr = SecretStr("")
 
     @model_validator(mode="after")
     def validate_enabled_provider(self) -> "ProviderSettings":
@@ -73,11 +78,73 @@ class XaiProviderSettings(ProviderSettings):
         return self
 
 
+class OpenCodeProviderSettings(ProviderConnectionSettings):
+    base_url: str = "https://opencode.ai"
+    auth_cookie: SecretStr = SecretStr("")
+    workspace_id: str = ""
+
+    @field_validator("auth_cookie", mode="before")
+    @classmethod
+    def normalize_auth_cookie(cls, value: object) -> object:
+        if isinstance(value, SecretStr):
+            raw_cookie = value.get_secret_value().strip()
+        elif isinstance(value, str):
+            raw_cookie = value.strip()
+        else:
+            return value
+
+        if not raw_cookie:
+            return raw_cookie
+        if "\r" in raw_cookie or "\n" in raw_cookie:
+            raise ValueError("auth-cookie must not contain line breaks")
+
+        cookie_parts = [part.strip() for part in raw_cookie.split(";") if part.strip()]
+        auth_cookies = [
+            part
+            for part in cookie_parts
+            if part.partition("=")[0] in {"auth", "__Host-auth"}
+            and bool(part.partition("=")[2])
+        ]
+        if len(auth_cookies) == 1:
+            return auth_cookies[0]
+        if len(auth_cookies) > 1:
+            raise ValueError("auth-cookie contains multiple authentication cookies")
+        if len(cookie_parts) == 1:
+            return f"auth={raw_cookie}"
+        raise ValueError("auth-cookie header does not contain auth or __Host-auth")
+
+    @model_validator(mode="after")
+    def validate_enabled_provider(self) -> "OpenCodeProviderSettings":
+        if not self.enabled:
+            return self
+
+        cookie = self.auth_cookie.get_secret_value().strip()
+        name, separator, value = cookie.partition("=")
+        if (
+            name not in {"auth", "__Host-auth"}
+            or not separator
+            or not value
+        ):
+            raise ValueError(
+                "auth-cookie must contain exactly one auth=... or __Host-auth=... cookie"
+            )
+        if re.fullmatch(r"wrk_[A-Za-z0-9]+", self.workspace_id.strip()) is None:
+            raise ValueError("workspace-id must use the wrk_... format")
+
+        base_url = self.base_url.rstrip("/")
+        if base_url != "https://opencode.ai":
+            raise ValueError(
+                "base-url must be https://opencode.ai when OpenCode is enabled"
+            )
+        return self
+
+
 class ProvidersSettings(ConfigurationModel):
     openrouter: ProviderSettings
     deepseek: ProviderSettings
     siliconflow: ProviderSettings
     xai: XaiProviderSettings
+    opencode: OpenCodeProviderSettings = Field(default_factory=OpenCodeProviderSettings)
 
 
 class Settings(ConfigurationModel):

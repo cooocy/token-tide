@@ -1,6 +1,6 @@
 # TokenTide 🌊
 
-TokenTide 是一个聚合 AI 平台预充值余额与余额历史的单用户 Dashboard。第一阶段支持 OpenRouter、DeepSeek、SiliconFlow 和 xAI，只调用官方公开 API。
+TokenTide 是一个聚合 AI 平台预充值余额与余额历史的单用户 Dashboard。当前支持 OpenRouter、DeepSeek、SiliconFlow、xAI，以及实验性的 OpenCode Zen。
 
 ## 工程结构
 
@@ -83,6 +83,29 @@ providers:
 
 `proxy-url` 省略或设为 `null` 时直连。代理只影响所属 Provider 的余额 API 请求，不影响其他 Provider 或远端配置下载。
 
+OpenCode Zen 尚未提供支持 API Key 鉴权的公开余额接口。TokenTide 的实验性接入使用
+OpenCode Web Dashboard 内部 billing RPC，需要登录 Cookie 和 Workspace ID：
+
+```yaml
+providers:
+  opencode:
+    enabled: true
+    auth-cookie: auth=replace-me
+    workspace-id: wrk_01EXAMPLE
+    base-url: https://opencode.ai
+    proxy-url: null
+```
+
+- `auth-cookie` 支持直接填写 Cookie value、单枚 `auth=...` / `__Host-auth=...`
+  Cookie，或包含认证 Cookie 的完整 Cookie Header；发送前只保留认证 Cookie。
+- `workspace-id` 可从 OpenCode Workspace 页面 URL 中取得。
+- 启用时 `base-url` 必须为 `https://opencode.ai`，请求不跟随跳转，防止 Cookie
+  被发送到其他主机。
+- OpenCode 当前登录 Session 的名义有效期是 365 天，但退出登录、清理 Cookie、
+  服务端撤销或密钥轮换都可能使其提前失效。
+- 该 RPC 没有公开稳定性保证；若 function ID 或响应格式变化，刷新会安全失败并保留
+  最后一次成功余额。
+
 ### 4. 迁移与启动
 
 ```bash
@@ -154,10 +177,10 @@ pnpm dev
 
 ## 安全边界
 
-- API Key 只从后端配置读取
-- API Key 不写入数据库、不返回前端、不输出日志
-- 不保存平台原始响应
-- 不保存账号密码、Cookie，也不抓取网页或调用私有接口
+- API Key 和 OpenCode 登录 Cookie 只从后端配置读取
+- API Key、Cookie、客户标识和平台原始响应不写入数据库、不返回前端、不输出日志
+- 除实验性的 OpenCode Provider 外，不使用网页登录 Cookie 或调用私有接口
+- OpenCode Cookie 是完整登录凭证，远端配置仓库必须限制访问，禁止提交到本仓库
 
 ## Python 服务规范
 

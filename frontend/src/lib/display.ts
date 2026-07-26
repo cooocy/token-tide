@@ -3,6 +3,7 @@ const PROVIDER_NAMES: Record<string, string> = {
   deepseek: 'DeepSeek',
   siliconflow: 'SiliconFlow',
   xai: 'xAI',
+  opencode: 'OpenCode',
 };
 
 const PROVIDER_MARKS: Record<string, string> = {
@@ -10,6 +11,7 @@ const PROVIDER_MARKS: Record<string, string> = {
   deepseek: 'DS',
   siliconflow: 'SF',
   xai: 'X',
+  opencode: 'OC',
 };
 
 export function formatProviderName(provider: string): string {

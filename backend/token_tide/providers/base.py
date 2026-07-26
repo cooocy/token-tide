@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 
-from token_tide.config import ProviderSettings
+from token_tide.config import ProviderConnectionSettings, ProviderSettings
 
 
 class ProviderError(RuntimeError):
@@ -32,12 +32,18 @@ def decimal_value(value: object, field: str) -> Decimal:
 class BalanceProvider(ABC):
     name: str
 
-    def __init__(self, settings: ProviderSettings, timeout_seconds: float) -> None:
+    def __init__(
+        self,
+        settings: ProviderConnectionSettings,
+        timeout_seconds: float,
+    ) -> None:
         self.settings = settings
         self.enabled = settings.enabled
         self.timeout_seconds = timeout_seconds
 
     async def get_json(self, path: str) -> dict[str, Any]:
+        if not isinstance(self.settings, ProviderSettings):
+            raise RuntimeError("Provider does not support Bearer API requests")
         headers = {
             "Accept": "application/json",
             "Authorization": f"Bearer {self.settings.api_key.get_secret_value()}",
