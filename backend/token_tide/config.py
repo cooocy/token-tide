@@ -16,6 +16,21 @@ from pydantic import (
     model_validator,
 )
 
+ProviderName = Literal[
+    "openrouter",
+    "deepseek",
+    "siliconflow",
+    "xai",
+    "opencode",
+]
+DEFAULT_PROVIDER_ORDER: tuple[ProviderName, ...] = (
+    "openrouter",
+    "deepseek",
+    "siliconflow",
+    "xai",
+    "opencode",
+)
+
 
 def to_kebab(field_name: str) -> str:
     return field_name.replace("_", "-")
@@ -140,11 +155,21 @@ class OpenCodeProviderSettings(ProviderConnectionSettings):
 
 
 class ProvidersSettings(ConfigurationModel):
+    order: list[ProviderName] = Field(
+        default_factory=lambda: list(DEFAULT_PROVIDER_ORDER)
+    )
     openrouter: ProviderSettings
     deepseek: ProviderSettings
     siliconflow: ProviderSettings
     xai: XaiProviderSettings
     opencode: OpenCodeProviderSettings = Field(default_factory=OpenCodeProviderSettings)
+
+    @field_validator("order")
+    @classmethod
+    def validate_order(cls, value: list[ProviderName]) -> list[ProviderName]:
+        if len(value) != len(set(value)):
+            raise ValueError("order must not contain duplicate provider names")
+        return value
 
 
 class Settings(ConfigurationModel):

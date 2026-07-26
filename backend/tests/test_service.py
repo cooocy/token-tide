@@ -79,10 +79,28 @@ async def test_failed_provider_does_not_block_other_provider(
 
     results: list[ProviderRefreshResult] = await service.refresh_all("SCHEDULED")
 
+    assert [result.provider for result in results] == ["healthy", "failed"]
     assert [result.status for result in results] == ["SUCCESS", "FAILED"]
     with session_factory() as session:
         snapshots = session.scalars(select(BalanceSnapshot)).all()
         assert len(snapshots) == 1
+
+
+def test_latest_balances_preserves_provider_order(
+    session_factory: sessionmaker[Session],
+) -> None:
+    first = StubProvider()
+    first.name = "first"
+    second = StubProvider()
+    second.name = "second"
+    service = BalanceService(
+        {"second": second, "first": first},
+        session_factory,
+    )
+
+    latest = service.latest_balances()
+
+    assert [provider.provider for provider in latest] == ["second", "first"]
 
 
 @pytest.mark.asyncio

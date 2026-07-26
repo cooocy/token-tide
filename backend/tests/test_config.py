@@ -4,11 +4,69 @@ import pytest
 from pydantic import ValidationError
 
 from token_tide.config import (
+    DEFAULT_PROVIDER_ORDER,
     ConfigurationError,
     OpenCodeProviderSettings,
     ProviderSettings,
+    ProvidersSettings,
     load_settings,
 )
+
+
+def provider_configuration(**overrides: object) -> dict[str, object]:
+    configuration: dict[str, object] = {
+        "openrouter": {
+            "enabled": False,
+            "api-key": "",
+            "base-url": "https://openrouter.ai",
+        },
+        "deepseek": {
+            "enabled": False,
+            "api-key": "",
+            "base-url": "https://api.deepseek.com",
+        },
+        "siliconflow": {
+            "enabled": False,
+            "api-key": "",
+            "base-url": "https://api.siliconflow.com",
+        },
+        "xai": {
+            "enabled": False,
+            "api-key": "",
+            "base-url": "https://management-api.x.ai",
+            "team-id": "",
+        },
+    }
+    configuration.update(overrides)
+    return configuration
+
+
+def test_provider_order_defaults_to_existing_order() -> None:
+    settings = ProvidersSettings.model_validate(provider_configuration())
+
+    assert settings.order == list(DEFAULT_PROVIDER_ORDER)
+
+
+def test_provider_order_accepts_partial_custom_order() -> None:
+    settings = ProvidersSettings.model_validate(
+        provider_configuration(order=["opencode", "xai"])
+    )
+
+    assert settings.order == ["opencode", "xai"]
+
+
+@pytest.mark.parametrize(
+    "order",
+    [
+        ["opencode", "opencode"],
+        ["opencode", "unknown"],
+    ],
+)
+def test_provider_order_rejects_duplicates_and_unknown_names(
+    order: list[str],
+) -> None:
+    with pytest.raises(ValidationError):
+        ProvidersSettings.model_validate(provider_configuration(order=order))
 
 
 def test_enabled_provider_requires_api_key(tmp_path: Path) -> None:

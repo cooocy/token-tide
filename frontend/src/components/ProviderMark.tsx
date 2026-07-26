@@ -1,10 +1,12 @@
 import deepseekLogo from '@/assets/provider-logos/deepseek.ico';
+import opencodeLogo from '@/assets/provider-logos/opencode.svg';
 import openrouterLogo from '@/assets/provider-logos/openrouter.svg';
 import xaiLogo from '@/assets/provider-logos/xai.ico';
 import { formatProviderMark } from '@/lib/display';
 
 const PROVIDER_LOGOS: Record<string, string> = {
   deepseek: deepseekLogo,
+  opencode: opencodeLogo,
   openrouter: openrouterLogo,
   xai: xaiLogo,
 };

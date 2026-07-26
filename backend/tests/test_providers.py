@@ -8,8 +8,10 @@ import pytest
 from token_tide.config import (
     OpenCodeProviderSettings,
     ProviderSettings,
+    Settings,
     XaiProviderSettings,
 )
+from token_tide.providers import create_providers
 from token_tide.providers.base import ProviderError
 from token_tide.providers.deepseek import DeepSeekProvider
 from token_tide.providers.opencode import OpenCodeProvider, parse_balance_response
@@ -27,6 +29,61 @@ def provider_settings(base_url: str, proxy_url: str | None = None) -> ProviderSe
     if proxy_url is not None:
         values["proxy-url"] = proxy_url
     return ProviderSettings.model_validate(values)
+
+
+def test_create_providers_applies_custom_order_and_appends_omissions() -> None:
+    settings = Settings.model_validate(
+        {
+            "server": {
+                "host": "127.0.0.1",
+                "port": 8800,
+            },
+            "database": {
+                "url": "mysql+pymysql://user:pass@localhost/token_tide",
+            },
+            "http": {
+                "timeout-seconds": 10,
+            },
+            "refresh": {
+                "cron": "0 * * * *",
+                "timezone": "UTC",
+            },
+            "providers": {
+                "order": ["opencode", "xai"],
+                "openrouter": {
+                    "enabled": True,
+                    "api-key": "secret",
+                    "base-url": "https://openrouter.ai",
+                },
+                "deepseek": {
+                    "enabled": True,
+                    "api-key": "secret",
+                    "base-url": "https://api.deepseek.com",
+                },
+                "siliconflow": {
+                    "enabled": False,
+                    "api-key": "",
+                    "base-url": "https://api.siliconflow.com",
+                },
+                "xai": {
+                    "enabled": False,
+                    "api-key": "",
+                    "base-url": "https://management-api.x.ai",
+                    "team-id": "",
+                },
+                "opencode": {
+                    "enabled": True,
+                    "auth-cookie": "auth=session-secret",
+                    "workspace-id": "wrk_01EXAMPLE",
+                    "base-url": "https://opencode.ai",
+                },
+            },
+        }
+    )
+
+    providers = create_providers(settings)
+
+    assert list(providers) == ["opencode", "openrouter", "deepseek"]
 
 
 @pytest.mark.parametrize(

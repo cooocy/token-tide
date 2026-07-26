@@ -19,6 +19,13 @@ refresh:
   timezone: Asia/Shanghai
 
 providers:
+  # 可只列出需要优先展示的平台；其余已启用平台按默认顺序追加。
+  order:
+    - openrouter
+    - deepseek
+    - siliconflow
+    - xai
+    - opencode
   openrouter:
     enabled: false
     api-key: ""

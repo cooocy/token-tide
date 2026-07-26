@@ -69,6 +69,20 @@ export BOOKSTORE_CODEUP_TOKEN=<token>
 
 三组凭证只需配置当前 `BOOKSTORE_ENGINE` 对应的一组。下载失败、内容为空或 YAML 校验失败时，迁移和应用都会立即停止。运行时配置文件已被 Git 忽略。
 
+首页平台顺序由 `providers.order` 控制，余额接口也会保持相同顺序。可以只列出需要
+优先展示的平台，未列出的已启用平台会按默认顺序追加：
+
+```yaml
+providers:
+  order:
+    - opencode
+    - xai
+    - openrouter
+```
+
+未配置 `order` 时，默认顺序为 OpenRouter、DeepSeek、SiliconFlow、xAI、OpenCode。
+列表中的已禁用平台会被忽略；未知平台名或重复项会导致配置校验失败。
+
 每个平台可以独立配置可选的 HTTP/HTTPS 代理。例如仅让 xAI 的服务端请求经过本地代理：
 
 ```yaml
