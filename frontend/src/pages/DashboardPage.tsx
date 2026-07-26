@@ -106,9 +106,15 @@ export default function DashboardPage() {
         <section className="provider-stack" aria-label="正在读取平台余额">
           {[0, 1, 2].map((item) => (
             <div className="provider-card skeleton-card" key={item}>
-              <span className="skeleton-line is-short" />
-              <span className="skeleton-line is-amount" />
-              <span className="skeleton-line" />
+              <div className="skeleton-card-heading">
+                <span className="skeleton-mark" />
+                <span className="skeleton-line is-short" />
+                <span className="skeleton-line is-action" />
+              </div>
+              <div className="skeleton-balance-row">
+                <span className="skeleton-line is-currency" />
+                <span className="skeleton-line is-amount" />
+              </div>
             </div>
           ))}
         </section>
@@ -132,6 +138,9 @@ export default function DashboardPage() {
             const historyUrl = `/providers/${provider.provider}/history${
               firstCurrency ? `?currency=${encodeURIComponent(firstCurrency)}` : ''
             }`;
+            const isUnavailable = provider.balances.some(
+              (balance) => !balance.is_available,
+            );
 
             return (
               <article
@@ -143,19 +152,34 @@ export default function DashboardPage() {
                     <ProviderMark provider={provider.provider} />
                     <div>
                       <h2>{formatProviderName(provider.provider)}</h2>
-                      <p className="provider-status">
-                        <span aria-hidden="true" />
-                        {status.label}
-                      </p>
                     </div>
                   </div>
-                  <Link
-                    className="history-link"
-                    to={historyUrl}
-                    aria-label={`查看 ${formatProviderName(provider.provider)} 余额历史`}
-                  >
-                    <ArrowIcon />
-                  </Link>
+                  <div className="provider-card-tools">
+                    <Link
+                      className="history-link"
+                      to={historyUrl}
+                      aria-label={`查看 ${formatProviderName(provider.provider)} 余额趋势`}
+                    >
+                      <span>余额趋势</span>
+                      <ArrowIcon />
+                    </Link>
+                    <span className="provider-update-meta">
+                      <span>
+                        {provider.status === 'NEVER_REFRESHED'
+                          ? status.label
+                          : formatRelativeTime(provider.last_success_at)}
+                      </span>
+                      {provider.status !== 'SUCCESS' &&
+                        provider.status !== 'NEVER_REFRESHED' && (
+                          <span className="provider-refresh-status">
+                            {status.label}
+                          </span>
+                        )}
+                      {isUnavailable && (
+                        <span className="availability-note">平台暂不可用</span>
+                      )}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="balance-grid">
@@ -168,13 +192,6 @@ export default function DashboardPage() {
                       <strong>{formatAmount(balance.available_amount)}</strong>
                     </div>
                   ))}
-                </div>
-
-                <div className="provider-meta">
-                  <span>{formatRelativeTime(provider.last_success_at)}</span>
-                  {provider.balances.some((balance) => !balance.is_available) && (
-                    <span className="availability-note">平台暂不可用</span>
-                  )}
                 </div>
 
                 {provider.status === 'FAILED' && provider.error_message && (
