@@ -68,7 +68,7 @@ export default function DashboardPage() {
       <header className="dashboard-header">
         <div className="brand-lockup">
           <span className="brand-mark" aria-hidden="true">
-            T
+            <img src="/favicon.svg" alt="" />
           </span>
           <div>
             <p className="brand-name">TokenTide</p>

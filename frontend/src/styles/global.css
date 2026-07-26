@@ -135,7 +135,11 @@ svg {
   width: 42px;
   height: 42px;
   border-radius: 50% 50% 46% 54%;
-  font-size: 1.25rem;
+}
+
+.brand-mark img {
+  width: 30px;
+  height: 30px;
 }
 
 .brand-name,
