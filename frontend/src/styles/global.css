@@ -134,7 +134,8 @@ svg {
 .brand-mark {
   width: 42px;
   height: 42px;
-  border-radius: 50% 50% 46% 54%;
+  border: 0;
+  background: transparent;
 }
 
 .brand-mark img {
@@ -224,12 +225,6 @@ svg {
   font-weight: 500;
   letter-spacing: -0.055em;
   line-height: 0.98;
-}
-
-.overview-heading > div > p:last-child {
-  margin-top: 13px;
-  color: var(--muted);
-  font-size: 0.82rem;
 }
 
 .message-stack {

@@ -56,11 +56,7 @@ export default function DashboardPage() {
   const summary = useMemo(() => {
     const items = providers ?? [];
     const healthyCount = items.filter((provider) => provider.status === 'SUCCESS').length;
-    const latestSuccess = items
-      .map((provider) => provider.last_success_at)
-      .filter((value): value is string => value !== null)
-      .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0] ?? null;
-    return { healthyCount, latestSuccess, total: items.length };
+    return { healthyCount, total: items.length };
   }, [providers]);
 
   return (
@@ -72,22 +68,24 @@ export default function DashboardPage() {
           </span>
           <div>
             <p className="brand-name">TokenTide</p>
-            <p className="brand-caption">AI 账户余额潮位</p>
+            <p className="brand-caption">多平台余额监控</p>
           </div>
         </div>
         {providers && providers.length > 0 && (
-          <div className="health-summary">
+          <div
+            className="health-summary"
+            aria-label={`${summary.healthyCount} 个平台运行正常，共 ${summary.total} 个平台`}
+          >
             <span className="health-pulse" aria-hidden="true" />
-            {summary.healthyCount} / {summary.total} 正常
+            {summary.healthyCount} / {summary.total}
           </div>
         )}
       </header>
 
       <section className="overview-heading" aria-labelledby="overview-title">
         <div>
-          <p className="section-kicker">CURRENT TIDE</p>
+          <p className="section-kicker">BALANCE DASHBOARD</p>
           <h1 id="overview-title">平台余额</h1>
-          <p>{formatRelativeTime(summary.latestSuccess)}</p>
         </div>
       </section>
 
