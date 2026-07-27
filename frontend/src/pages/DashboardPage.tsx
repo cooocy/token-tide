@@ -85,7 +85,7 @@ export default function DashboardPage() {
       <section className="overview-heading" aria-labelledby="overview-title">
         <div>
           <p className="section-kicker">BALANCE DASHBOARD</p>
-          <h1 id="overview-title">平台余额</h1>
+          <h1 id="overview-title">余额看板</h1>
         </div>
       </section>
 
@@ -103,7 +103,7 @@ export default function DashboardPage() {
       </div>
 
       {loading && !providers && (
-        <section className="provider-stack" aria-label="正在读取平台余额">
+        <section className="provider-stack" aria-label="正在读取余额看板">
           {[0, 1, 2].map((item) => (
             <div className="provider-card skeleton-card" key={item}>
               <div className="skeleton-card-heading">
@@ -131,7 +131,7 @@ export default function DashboardPage() {
       )}
 
       {providers && providers.length > 0 && (
-        <section className="provider-stack" aria-label="平台余额列表">
+        <section className="provider-stack" aria-label="余额看板列表">
           {providers.map((provider) => {
             const status = STATUS_META[provider.status];
             const firstCurrency = provider.balances[0]?.currency;
@@ -152,6 +152,22 @@ export default function DashboardPage() {
                     <ProviderMark provider={provider.provider} />
                     <div>
                       <h2>{formatProviderName(provider.provider)}</h2>
+                      <span className="provider-update-meta">
+                        <span>
+                          {provider.status === 'NEVER_REFRESHED'
+                            ? status.label
+                            : formatRelativeTime(provider.last_success_at)}
+                        </span>
+                        {provider.status !== 'SUCCESS' &&
+                          provider.status !== 'NEVER_REFRESHED' && (
+                            <span className="provider-refresh-status">
+                              {status.label}
+                            </span>
+                          )}
+                        {isUnavailable && (
+                          <span className="availability-note">平台暂不可用</span>
+                        )}
+                      </span>
                     </div>
                   </div>
                   <div className="provider-card-tools">
@@ -163,22 +179,6 @@ export default function DashboardPage() {
                       <span>余额趋势</span>
                       <ArrowIcon />
                     </Link>
-                    <span className="provider-update-meta">
-                      <span>
-                        {provider.status === 'NEVER_REFRESHED'
-                          ? status.label
-                          : formatRelativeTime(provider.last_success_at)}
-                      </span>
-                      {provider.status !== 'SUCCESS' &&
-                        provider.status !== 'NEVER_REFRESHED' && (
-                          <span className="provider-refresh-status">
-                            {status.label}
-                          </span>
-                        )}
-                      {isUnavailable && (
-                        <span className="availability-note">平台暂不可用</span>
-                      )}
-                    </span>
                   </div>
                 </div>
 

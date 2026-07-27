@@ -221,7 +221,7 @@ svg {
   margin-top: 8px;
   color: var(--foam);
   font-family: var(--display-font);
-  font-size: clamp(2.5rem, 13vw, 4.5rem);
+  font-size: clamp(2.2rem, 11vw, 3.8rem);
   font-weight: 500;
   letter-spacing: -0.055em;
   line-height: 0.98;
@@ -339,13 +339,17 @@ svg {
 
 .provider-identity > div {
   min-width: 0;
+  flex: 1 1 auto;
+}
+
+.provider-identity {
+  flex: 1 1 auto;
 }
 
 .provider-card-tools {
   display: flex;
-  max-width: 58%;
   min-width: 0;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   flex-direction: column;
   align-items: flex-end;
 }
@@ -442,12 +446,12 @@ svg {
   display: flex;
   min-width: 0;
   flex-wrap: wrap;
-  justify-content: flex-end;
-  margin-top: -6px;
+  justify-content: flex-start;
+  margin-top: 3px;
   color: var(--muted);
   font-size: 0.62rem;
   line-height: 1.4;
-  text-align: right;
+  text-align: left;
 }
 
 .provider-update-meta > span + span::before {
@@ -694,30 +698,31 @@ svg {
   white-space: nowrap;
 }
 
-.balance-change {
+.balance-flow {
   display: inline-flex;
   flex: 0 0 auto;
   flex-direction: column;
   align-items: flex-end;
+  gap: 4px;
   padding-bottom: 5px;
-  color: var(--mist);
+  color: var(--muted);
   font-family: var(--data-font);
   font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  line-height: 1.35;
 }
 
-.balance-change.is-positive {
+.balance-flow > span {
+  white-space: nowrap;
+}
+
+.balance-flow .is-supply {
   color: var(--current);
 }
 
-.balance-change.is-negative {
+.balance-flow .is-consumption {
   color: var(--alert);
-}
-
-.balance-change small {
-  margin-top: 3px;
-  color: var(--muted);
-  font-family: inherit;
-  font-size: 0.58rem;
 }
 
 .currency-tabs {
@@ -750,47 +755,6 @@ svg {
   border-color: rgba(50, 214, 197, 0.58);
   color: var(--current);
   background: rgba(50, 214, 197, 0.08);
-}
-
-.flow-summary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.flow-summary-item {
-  min-width: 0;
-  padding: 15px 17px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: var(--panel);
-}
-
-.flow-summary-item span {
-  display: block;
-  color: var(--muted);
-  font-size: 0.66rem;
-}
-
-.flow-summary-item strong {
-  display: block;
-  margin-top: 7px;
-  overflow: hidden;
-  font-family: var(--data-font);
-  font-size: 0.9rem;
-  font-variant-numeric: tabular-nums;
-  font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.flow-summary-item.is-supply strong {
-  color: var(--current);
-}
-
-.flow-summary-item.is-consumption strong {
-  color: var(--alert);
 }
 
 .chart-panel,
@@ -1069,17 +1033,12 @@ svg {
   .history-header,
   .history-page > .message-stack,
   .history-skeleton,
-  .balance-hero,
-  .flow-summary {
+  .balance-hero {
     grid-column: 1 / -1;
   }
 
   .balance-hero {
     padding-bottom: 26px;
-  }
-
-  .flow-summary {
-    margin-bottom: 0;
   }
 
   .chart-panel,

@@ -174,11 +174,10 @@ export default function ProviderHistoryPage() {
           } else if (event.change_type === 'CONSUMPTION') {
             summary.consumption += Math.abs(amount);
           }
-          summary.change += amount;
           summary.hasEvents = true;
           return summary;
         },
-        { supply: 0, consumption: 0, change: 0, hasEvents: false },
+        { supply: 0, consumption: 0, hasEvents: false },
       ),
     [events],
   );
@@ -186,7 +185,7 @@ export default function ProviderHistoryPage() {
   return (
     <main className="app-shell history-page" aria-busy={loading}>
       <header className="history-header">
-        <Link className="back-link" to="/" aria-label="返回平台余额">
+        <Link className="back-link" to="/" aria-label="返回余额看板">
           <BackIcon />
         </Link>
         <div className="history-provider">
@@ -241,17 +240,27 @@ export default function ProviderHistoryPage() {
                 </strong>
               </div>
               {flowSummary.hasEvents && (
-                <span
-                  className={`balance-change ${
-                    flowSummary.change > 0
-                      ? 'is-positive'
-                      : flowSummary.change < 0
-                        ? 'is-negative'
-                        : ''
-                  }`}
-                >
-                  {formatSignedAmount(flowSummary.change)}
-                  <small>本段变化</small>
+                <span className="balance-flow">
+                  <span
+                    className="is-supply"
+                    aria-label={`本段补给 +${formatAmount(flowSummary.supply.toFixed(2))}`}
+                  >
+                    +{formatAmount(flowSummary.supply.toFixed(2))}
+                  </span>
+                  <span
+                    className={
+                      flowSummary.consumption > 0 ? 'is-consumption' : ''
+                    }
+                    aria-label={`本段消耗 ${
+                      flowSummary.consumption > 0
+                        ? `-${formatAmount(flowSummary.consumption.toFixed(2))}`
+                        : '0'
+                    }`}
+                  >
+                    {flowSummary.consumption > 0
+                      ? `-${formatAmount(flowSummary.consumption.toFixed(2))}`
+                      : '0'}
+                  </span>
                 </span>
               )}
             </div>
@@ -273,31 +282,10 @@ export default function ProviderHistoryPage() {
             )}
           </section>
 
-          {flowSummary.hasEvents && (
-            <section className="flow-summary" aria-label="本段余额变化汇总">
-              <div className="flow-summary-item is-supply">
-                <span>本段补给</span>
-                <strong>+{formatAmount(flowSummary.supply.toFixed(2))}</strong>
-              </div>
-              <div
-                className={`flow-summary-item ${
-                  flowSummary.consumption > 0 ? 'is-consumption' : ''
-                }`}
-              >
-                <span>本段消耗</span>
-                <strong>
-                  {flowSummary.consumption > 0
-                    ? `-${formatAmount(flowSummary.consumption.toFixed(2))}`
-                    : '0'}
-                </strong>
-              </div>
-            </section>
-          )}
-
           <section className={`chart-panel ${loading ? 'is-loading' : ''}`}>
             <div className="section-heading">
               <div>
-                <p className="section-kicker">TIDE TRACE</p>
+                <p className="section-kicker">BALANCE TRACE</p>
                 <h1>余额潮位</h1>
               </div>
               <span>最近 {events.length} 个事件</span>

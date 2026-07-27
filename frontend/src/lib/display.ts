@@ -44,16 +44,16 @@ export function formatRelativeTime(value: string | null): string {
 
   const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
   if (seconds < 60) {
-    return '刚刚更新';
+    return '刚刚';
   }
   if (seconds < 3600) {
-    return `${Math.floor(seconds / 60)} 分钟前更新`;
+    return `${Math.floor(seconds / 60)} 分钟前`;
   }
   if (seconds < 86400) {
-    return `${Math.floor(seconds / 3600)} 小时前更新`;
+    return `${Math.floor(seconds / 3600)} 小时前`;
   }
   if (seconds < 604800) {
-    return `${Math.floor(seconds / 86400)} 天前更新`;
+    return `${Math.floor(seconds / 86400)} 天前`;
   }
   return formatDateTime(value);
 }
