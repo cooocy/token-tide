@@ -3,19 +3,19 @@ import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
-from typing import overload
+from typing import cast, overload
 
-from sqlalchemy import Select, and_, desc, or_, select
+from sqlalchemy import Select, desc, select
 from sqlalchemy.orm import Session
 
-from token_tide.models import BalanceSnapshot, RefreshRun
+from token_tide.models import BalanceChangeEvent, BalanceSnapshot, RefreshRun
 from token_tide.providers.base import BalanceProvider, ProviderError
 from token_tide.response import ApplicationError
 from token_tide.schemas import (
+    BalanceChangeEventValue,
     BalanceChangeType,
     BalanceHistory,
     BalanceValue,
-    HistoryPoint,
     ProviderBalance,
     ProviderRefreshResult,
 )
@@ -82,15 +82,30 @@ class BalanceService:
             finished_at = datetime.now(UTC)
             with self.session_factory() as session:
                 for reading in readings:
-                    session.add(
-                        BalanceSnapshot(
-                            provider=reading.provider,
-                            currency=reading.currency,
-                            available_amount=normalize_amount(reading.available_amount),
-                            is_available=reading.is_available,
-                            observed_at=finished_at,
+                    previous = session.scalar(
+                        select(BalanceSnapshot)
+                        .where(
+                            BalanceSnapshot.provider == reading.provider,
+                            BalanceSnapshot.currency == reading.currency,
                         )
+                        .order_by(
+                            desc(BalanceSnapshot.observed_at),
+                            desc(BalanceSnapshot.id),
+                        )
+                        .limit(1)
                     )
+                    snapshot = BalanceSnapshot(
+                        provider=reading.provider,
+                        currency=reading.currency,
+                        available_amount=normalize_amount(reading.available_amount),
+                        is_available=reading.is_available,
+                        observed_at=finished_at,
+                    )
+                    session.add(snapshot)
+                    session.flush()
+                    event = self._new_change_event(snapshot, previous)
+                    if event is not None:
+                        session.add(event)
                 run = session.get(RefreshRun, run_id)
                 if run is None:
                     raise RuntimeError("Refresh run disappeared")
@@ -132,28 +147,31 @@ class BalanceService:
         limit: int,
     ) -> BalanceHistory:
         self.require_provider(provider_name)
-        statement: Select[tuple[BalanceSnapshot]] = select(BalanceSnapshot).where(
-            BalanceSnapshot.provider == provider_name
+        statement: Select[tuple[BalanceChangeEvent]] = select(
+            BalanceChangeEvent
+        ).where(
+            BalanceChangeEvent.provider == provider_name
         )
         normalized_currency = currency.upper() if currency else None
         if normalized_currency:
-            statement = statement.where(BalanceSnapshot.currency == normalized_currency)
+            statement = statement.where(
+                BalanceChangeEvent.currency == normalized_currency
+            )
         if start_time:
-            statement = statement.where(BalanceSnapshot.observed_at >= start_time)
+            statement = statement.where(BalanceChangeEvent.occurred_at >= start_time)
         if end_time:
-            statement = statement.where(BalanceSnapshot.observed_at <= end_time)
+            statement = statement.where(BalanceChangeEvent.occurred_at <= end_time)
         statement = statement.order_by(
-            desc(BalanceSnapshot.observed_at),
-            desc(BalanceSnapshot.id),
+            desc(BalanceChangeEvent.occurred_at),
+            desc(BalanceChangeEvent.id),
         ).limit(limit)
 
         with self.session_factory() as session:
-            snapshots = list(reversed(session.scalars(statement).all()))
-            points = self._history_points(session, snapshots)
+            events = list(reversed(session.scalars(statement).all()))
         return BalanceHistory(
             provider=provider_name,
             currency=normalized_currency,
-            points=points,
+            events=[self._change_event_value(event) for event in events],
         )
 
     def _create_refresh_run(self, provider: str, trigger: str, started_at: datetime) -> int:
@@ -222,7 +240,10 @@ class BalanceService:
                         BalanceSnapshot.provider == provider_name,
                         BalanceSnapshot.currency == currency,
                     )
-                    .order_by(desc(BalanceSnapshot.observed_at))
+                    .order_by(
+                        desc(BalanceSnapshot.observed_at),
+                        desc(BalanceSnapshot.id),
+                    )
                     .limit(1)
                 )
             )
@@ -253,72 +274,41 @@ class BalanceService:
             observed_at=snapshot.observed_at,
         )
 
-    def _history_points(
-        self,
-        session: Session,
-        snapshots: list[BalanceSnapshot],
-    ) -> list[HistoryPoint]:
-        first_by_currency: dict[str, BalanceSnapshot] = {}
-        for snapshot in snapshots:
-            first_by_currency.setdefault(snapshot.currency, snapshot)
-
-        previous_by_currency = {
-            currency: self._previous_snapshot(session, first)
-            for currency, first in first_by_currency.items()
-        }
-        points: list[HistoryPoint] = []
-        for snapshot in snapshots:
-            previous = previous_by_currency.get(snapshot.currency)
-            points.append(self._history_point(snapshot, previous))
-            previous_by_currency[snapshot.currency] = snapshot
-        return points
-
     @staticmethod
-    def _previous_snapshot(
-        session: Session,
-        snapshot: BalanceSnapshot,
-    ) -> BalanceSnapshot | None:
-        return session.scalar(
-            select(BalanceSnapshot)
-            .where(
-                BalanceSnapshot.provider == snapshot.provider,
-                BalanceSnapshot.currency == snapshot.currency,
-                or_(
-                    BalanceSnapshot.observed_at < snapshot.observed_at,
-                    and_(
-                        BalanceSnapshot.observed_at == snapshot.observed_at,
-                        BalanceSnapshot.id < snapshot.id,
-                    ),
-                ),
-            )
-            .order_by(
-                desc(BalanceSnapshot.observed_at),
-                desc(BalanceSnapshot.id),
-            )
-            .limit(1)
-        )
-
-    @classmethod
-    def _history_point(
-        cls,
+    def _new_change_event(
         snapshot: BalanceSnapshot,
         previous: BalanceSnapshot | None,
-    ) -> HistoryPoint:
-        change_amount: Decimal | None = None
-        change_type: BalanceChangeType | None = None
-        if previous is not None:
+    ) -> BalanceChangeEvent | None:
+        if previous is None:
+            change_amount = None
+            change_type: BalanceChangeType = "INITIAL"
+        else:
             change_amount = normalize_amount(
                 snapshot.available_amount - previous.available_amount
             )
-            if change_amount > 0:
-                change_type = "SUPPLY"
-            elif change_amount < 0:
-                change_type = "CONSUMPTION"
-            else:
-                change_type = "UNCHANGED"
+            if change_amount == 0:
+                return None
+            change_type = "SUPPLY" if change_amount > 0 else "CONSUMPTION"
 
-        return HistoryPoint(
-            **cls._balance_value(snapshot).model_dump(),
-            change_amount=decimal_string(change_amount),
+        return BalanceChangeEvent(
+            snapshot_id=snapshot.id,
+            provider=snapshot.provider,
+            currency=snapshot.currency,
+            previous_amount=previous.available_amount if previous else None,
+            current_amount=snapshot.available_amount,
+            change_amount=change_amount,
             change_type=change_type,
+            occurred_at=snapshot.observed_at,
+        )
+
+    @staticmethod
+    def _change_event_value(event: BalanceChangeEvent) -> BalanceChangeEventValue:
+        return BalanceChangeEventValue(
+            id=event.id,
+            currency=event.currency,
+            previous_amount=decimal_string(event.previous_amount),
+            current_amount=decimal_string(event.current_amount) or "0.00",
+            change_amount=decimal_string(event.change_amount),
+            change_type=cast(BalanceChangeType, event.change_type),
+            occurred_at=event.occurred_at,
         )

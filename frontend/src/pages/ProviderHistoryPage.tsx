@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { findBalanceHistory, type BalanceHistory } from '@/api/balance';
+import {
+  findBalanceHistory,
+  findBalances,
+  type BalanceHistory,
+  type ProviderBalance,
+} from '@/api/balance';
 import BalanceTrendChart from '@/components/BalanceTrendChart';
 import ProviderMark from '@/components/ProviderMark';
 import {
@@ -22,10 +27,14 @@ export default function ProviderHistoryPage() {
   const { provider = '' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const [history, setHistory] = useState<BalanceHistory | null>(null);
+  const [providerBalance, setProviderBalance] = useState<ProviderBalance | null>(
+    null,
+  );
   const [currencies, setCurrencies] = useState<string[]>([]);
   const [selectedCurrency, setSelectedCurrency] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const loadCurrency = useCallback(
     async (currency: string, preserveCurrent = true): Promise<boolean> => {
@@ -67,24 +76,28 @@ export default function ProviderHistoryPage() {
       }
 
       setHistory(null);
+      setProviderBalance(null);
       setCurrencies([]);
       setLoading(true);
       setError(null);
 
       try {
-        const overview = await findBalanceHistory(provider);
+        const balances = await findBalances();
         if (cancelled) {
           return;
         }
 
-        const availableCurrencies = Array.from(
-          new Set(overview.points.map((point) => point.currency)),
-        ).sort();
+        const currentProvider =
+          balances.find((balance) => balance.provider === provider) ?? null;
+        const availableCurrencies = (currentProvider?.balances ?? [])
+          .map((balance) => balance.currency)
+          .sort();
         const requestedCurrency = searchParams.get('currency') ?? '';
         const initialCurrency = availableCurrencies.includes(requestedCurrency)
           ? requestedCurrency
-          : (overview.currency ?? availableCurrencies[0] ?? '');
+          : (availableCurrencies[0] ?? '');
 
+        setProviderBalance(currentProvider);
         setCurrencies(availableCurrencies);
         setSelectedCurrency(initialCurrency);
 
@@ -97,7 +110,10 @@ export default function ProviderHistoryPage() {
             setHistory(filtered);
           }
         } else {
-          setHistory(overview);
+          const unfiltered = await findBalanceHistory(provider);
+          if (!cancelled) {
+            setHistory(unfiltered);
+          }
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -117,7 +133,7 @@ export default function ProviderHistoryPage() {
     // The query parameter is read once when a provider route opens. Currency
     // changes use loadCurrency directly so they do not restart initialization.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider]);
+  }, [provider, reloadKey]);
 
   const handleCurrencyChange = async (currency: string): Promise<void> => {
     if (currency === selectedCurrency) {
@@ -130,29 +146,32 @@ export default function ProviderHistoryPage() {
     await loadCurrency(currency, false);
   };
 
-  const points = useMemo(
+  const events = useMemo(
     () =>
-      [...(history?.points ?? [])].sort(
+      [...(history?.events ?? [])].sort(
         (left, right) =>
-          new Date(left.observed_at).getTime() - new Date(right.observed_at).getTime(),
+          new Date(left.occurred_at).getTime() -
+            new Date(right.occurred_at).getTime() || left.id - right.id,
       ),
     [history],
   );
-  const latestPoint = points.at(-1);
+  const currentBalance = providerBalance?.balances.find(
+    (balance) => balance.currency === selectedCurrency,
+  );
   const flowSummary = useMemo(
     () =>
-      points.reduce(
-        (summary, point) => {
-          if (point.change_amount === null) {
+      events.reduce(
+        (summary, event) => {
+          if (event.change_amount === null) {
             return summary;
           }
-          const amount = Number(point.change_amount);
+          const amount = Number(event.change_amount);
           if (!Number.isFinite(amount)) {
             return summary;
           }
-          if (point.change_type === 'SUPPLY') {
+          if (event.change_type === 'SUPPLY') {
             summary.supply += amount;
-          } else if (point.change_type === 'CONSUMPTION') {
+          } else if (event.change_type === 'CONSUMPTION') {
             summary.consumption += Math.abs(amount);
           }
           summary.change += amount;
@@ -161,7 +180,7 @@ export default function ProviderHistoryPage() {
         },
         { supply: 0, consumption: 0, change: 0, hasEvents: false },
       ),
-    [points],
+    [events],
   );
 
   return (
@@ -188,8 +207,7 @@ export default function ProviderHistoryPage() {
                 type="button"
                 className="text-button"
                 onClick={() => {
-                  setLoading(true);
-                  void loadCurrency(selectedCurrency, false);
+                  setReloadKey((value) => value + 1);
                 }}
               >
                 重试
@@ -217,7 +235,9 @@ export default function ProviderHistoryPage() {
               <div>
                 <span id="history-balance-title">{selectedCurrency || '余额'}</span>
                 <strong>
-                  {latestPoint ? formatAmount(latestPoint.available_amount) : '—'}
+                  {currentBalance
+                    ? formatAmount(currentBalance.available_amount)
+                    : '—'}
                 </strong>
               </div>
               {flowSummary.hasEvents && (
@@ -280,12 +300,12 @@ export default function ProviderHistoryPage() {
                 <p className="section-kicker">TIDE TRACE</p>
                 <h1>余额潮位</h1>
               </div>
-              <span>最近 {points.length} 条</span>
+              <span>最近 {events.length} 个事件</span>
             </div>
             <BalanceTrendChart
               key={selectedCurrency}
               currency={selectedCurrency}
-              points={points}
+              events={events}
             />
           </section>
 
@@ -293,48 +313,44 @@ export default function ProviderHistoryPage() {
             <div className="section-heading">
               <div>
                 <p className="section-kicker">LOGBOOK</p>
-                <h2 id="records-title">最近记录</h2>
+                <h2 id="records-title">变动事件</h2>
               </div>
               <span>{selectedCurrency}</span>
             </div>
 
-            {points.length === 0 ? (
+            {events.length === 0 ? (
               <div className="empty-panel is-compact">
-                <h2>还没有历史记录</h2>
-                <p>定时任务刷新后，新的余额快照会显示在这里。</p>
+                <h2>还没有余额变动</h2>
+                <p>定时采样会持续记录余额，发生变化后会显示在这里。</p>
               </div>
             ) : (
               <ol className="record-list">
-                {[...points].reverse().map((point, index) => (
+                {[...events].reverse().map((event, index) => (
                   <li
-                    className={
-                      point.change_type
-                        ? `is-${point.change_type.toLowerCase()}`
-                        : undefined
-                    }
-                    key={`${point.currency}-${point.observed_at}`}
+                    className={`is-${event.change_type.toLowerCase()}`}
+                    key={event.id}
                   >
                     <span className="record-node" aria-hidden="true" />
                     <div>
-                      <time dateTime={point.observed_at}>
-                        {formatDateTime(point.observed_at)}
+                      <time dateTime={event.occurred_at}>
+                        {formatDateTime(event.occurred_at)}
                       </time>
-                      {index === 0 && <span className="latest-label">最新</span>}
-                      {point.change_type && (
-                        <span className="record-event">
-                          {point.change_type === 'SUPPLY'
-                            ? '补给'
-                            : point.change_type === 'CONSUMPTION'
-                              ? '消耗'
-                              : '无变化'}
-                        </span>
+                      {index === 0 && (
+                        <span className="latest-label">最近变动</span>
                       )}
+                      <span className="record-event">
+                        {event.change_type === 'INITIAL'
+                          ? '初始余额'
+                          : event.change_type === 'SUPPLY'
+                            ? '补给'
+                            : '消耗'}
+                      </span>
                     </div>
                     <div className="record-values">
-                      <strong>{formatAmount(point.available_amount)}</strong>
-                      {point.change_amount !== null && (
+                      <strong>{formatAmount(event.current_amount)}</strong>
+                      {event.change_amount !== null && (
                         <span>
-                          {formatSignedAmount(Number(point.change_amount))}
+                          {formatSignedAmount(Number(event.change_amount))}
                         </span>
                       )}
                     </div>

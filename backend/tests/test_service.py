@@ -6,9 +6,14 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from token_tide.models import BalanceSnapshot, Base, RefreshRun
+from token_tide.models import BalanceChangeEvent, BalanceSnapshot, Base, RefreshRun
 from token_tide.providers.base import BalanceProvider, BalanceReading, ProviderError
-from token_tide.schemas import BalanceValue, ProviderBalance, ProviderRefreshResult
+from token_tide.schemas import (
+    BalanceChangeEventValue,
+    BalanceValue,
+    ProviderBalance,
+    ProviderRefreshResult,
+)
 from token_tide.service import BalanceService, decimal_string, normalize_amount
 
 
@@ -19,10 +24,12 @@ class StubProvider(BalanceProvider):
         self,
         should_fail: bool = False,
         amount: Decimal = Decimal("12.34"),
+        is_available: bool = True,
     ) -> None:
         self.enabled = True
         self.should_fail = should_fail
         self.amount = amount
+        self.is_available = is_available
 
     async def fetch_balance(self) -> list[BalanceReading]:
         if self.should_fail:
@@ -32,7 +39,7 @@ class StubProvider(BalanceProvider):
                 provider=self.name,
                 currency="USD",
                 available_amount=self.amount,
-                is_available=True,
+                is_available=self.is_available,
             )
         ]
 
@@ -64,6 +71,13 @@ async def test_successful_refresh_persists_snapshot(
         snapshot = session.scalar(select(BalanceSnapshot))
         assert snapshot is not None
         assert snapshot.available_amount == Decimal("12.35")
+        event = session.scalar(select(BalanceChangeEvent))
+        assert event is not None
+        assert event.snapshot_id == snapshot.id
+        assert event.previous_amount is None
+        assert event.current_amount == Decimal("12.35")
+        assert event.change_amount is None
+        assert event.change_type == "INITIAL"
         assert session.scalar(select(RefreshRun)).status == "SUCCESS"  # type: ignore[union-attr]
 
 
@@ -84,6 +98,9 @@ async def test_failed_provider_does_not_block_other_provider(
     with session_factory() as session:
         snapshots = session.scalars(select(BalanceSnapshot)).all()
         assert len(snapshots) == 1
+        events = session.scalars(select(BalanceChangeEvent)).all()
+        assert len(events) == 1
+        assert events[0].provider == "healthy"
 
 
 def test_latest_balances_preserves_provider_order(
@@ -103,47 +120,56 @@ def test_latest_balances_preserves_provider_order(
     assert [provider.provider for provider in latest] == ["second", "first"]
 
 
-def test_balance_history_identifies_supply_consumption_and_unchanged(
+@pytest.mark.asyncio
+async def test_refresh_persists_only_initial_and_changed_balance_events(
     session_factory: sessionmaker[Session],
 ) -> None:
-    service = BalanceService({"stub": StubProvider()}, session_factory)
-    observed_at = datetime(2026, 7, 26, 8, tzinfo=UTC)
-    with session_factory() as session:
-        session.add_all(
-            [
-                BalanceSnapshot(
-                    provider="stub",
-                    currency="USD",
-                    available_amount=amount,
-                    is_available=True,
-                    observed_at=observed_at + timedelta(hours=index),
-                )
-                for index, amount in enumerate(
-                    [
-                        Decimal("10.00"),
-                        Decimal("7.50"),
-                        Decimal("12.00"),
-                        Decimal("12.00"),
-                    ]
-                )
-            ]
-        )
-        session.commit()
+    provider = StubProvider(amount=Decimal("10.00"))
+    service = BalanceService({"stub": provider}, session_factory)
+
+    await service.refresh_provider("stub", "SCHEDULED")
+    provider.amount = Decimal("10.00")
+    provider.is_available = False
+    await service.refresh_provider("stub", "SCHEDULED")
+    provider.amount = Decimal("7.50")
+    await service.refresh_provider("stub", "SCHEDULED")
+    provider.amount = Decimal("12.00")
+    await service.refresh_provider("stub", "SCHEDULED")
 
     history = service.balance_history("stub", "USD", None, None, 100)
 
-    assert [
-        (point.change_amount, point.change_type)
-        for point in history.points
-    ] == [
-        (None, None),
+    assert [(event.change_amount, event.change_type) for event in history.events] == [
+        (None, "INITIAL"),
         ("-2.50", "CONSUMPTION"),
         ("4.50", "SUPPLY"),
-        ("0.00", "UNCHANGED"),
+    ]
+    with session_factory() as session:
+        assert len(session.scalars(select(BalanceSnapshot)).all()) == 4
+        assert len(session.scalars(select(BalanceChangeEvent)).all()) == 3
+
+
+@pytest.mark.asyncio
+async def test_balance_history_reads_latest_events_in_chronological_order(
+    session_factory: sessionmaker[Session],
+) -> None:
+    provider = StubProvider(amount=Decimal("10.00"))
+    service = BalanceService({"stub": provider}, session_factory)
+    await service.refresh_provider("stub", "SCHEDULED")
+    provider.amount = Decimal("8.00")
+    await service.refresh_provider("stub", "SCHEDULED")
+    provider.amount = Decimal("18.00")
+    await service.refresh_provider("stub", "SCHEDULED")
+
+    history = service.balance_history("stub", "usd", None, None, 2)
+
+    assert history.currency == "USD"
+    assert [(event.change_amount, event.change_type) for event in history.events] == [
+        ("-2.00", "CONSUMPTION"),
+        ("10.00", "SUPPLY"),
     ]
 
 
-def test_balance_history_uses_preceding_snapshot_outside_limit(
+def test_balance_history_does_not_derive_events_from_snapshots(
     session_factory: sessionmaker[Session],
 ) -> None:
     service = BalanceService({"stub": StubProvider()}, session_factory)
@@ -152,71 +178,97 @@ def test_balance_history_uses_preceding_snapshot_outside_limit(
         session.add_all(
             [
                 BalanceSnapshot(
-                    provider="stub",
-                    currency="USD",
-                    available_amount=amount,
+                    provider="stub", currency="USD", available_amount=amount,
                     is_available=True,
                     observed_at=observed_at + timedelta(hours=index),
                 )
                 for index, amount in enumerate(
-                    [Decimal("10.00"), Decimal("8.00"), Decimal("18.00")]
+                    [Decimal("10.00"), Decimal("9.00")]
                 )
-            ]
-        )
-        session.add(
-            BalanceSnapshot(
-                provider="stub",
-                currency="EUR",
-                available_amount=Decimal("8.00"),
-                is_available=True,
-                observed_at=observed_at + timedelta(minutes=30),
-            )
-        )
-        session.commit()
-
-    history = service.balance_history("stub", "USD", None, None, 1)
-
-    assert len(history.points) == 1
-    assert history.points[0].change_amount == "10.00"
-    assert history.points[0].change_type == "SUPPLY"
-
-
-def test_balance_history_keeps_currency_changes_isolated(
-    session_factory: sessionmaker[Session],
-) -> None:
-    service = BalanceService({"stub": StubProvider()}, session_factory)
-    observed_at = datetime(2026, 7, 26, 8, tzinfo=UTC)
-    snapshots = [
-        ("USD", Decimal("10.00")),
-        ("EUR", Decimal("50.00")),
-        ("USD", Decimal("9.00")),
-        ("EUR", Decimal("70.00")),
-    ]
-    with session_factory() as session:
-        session.add_all(
-            [
-                BalanceSnapshot(
-                    provider="stub",
-                    currency=currency,
-                    available_amount=amount,
-                    is_available=True,
-                    observed_at=observed_at + timedelta(hours=index),
-                )
-                for index, (currency, amount) in enumerate(snapshots)
             ]
         )
         session.commit()
 
     history = service.balance_history("stub", None, None, None, 100)
 
-    assert [
-        (point.currency, point.change_amount, point.change_type)
-        for point in history.points
-    ] == [
-        ("USD", None, None),
-        ("EUR", None, None),
-        ("USD", "-1.00", "CONSUMPTION"),
-        ("EUR", "20.00", "SUPPLY"),
+    assert history.events == []
+
+
+def test_balance_history_filters_events_by_currency_and_time(
+    session_factory: sessionmaker[Session],
+) -> None:
+    service = BalanceService({"stub": StubProvider()}, session_factory)
+    observed_at = datetime(2026, 7, 26, 8, tzinfo=UTC)
+    with session_factory() as session:
+        usd_initial = BalanceSnapshot(
+            provider="stub",
+            currency="USD",
+            available_amount=Decimal("10.00"),
+            is_available=True,
+            observed_at=observed_at,
+        )
+        eur_initial = BalanceSnapshot(
+            provider="stub",
+            currency="EUR",
+            available_amount=Decimal("20.00"),
+            is_available=True,
+            observed_at=observed_at + timedelta(hours=1),
+        )
+        usd_supply = BalanceSnapshot(
+            provider="stub",
+            currency="USD",
+            available_amount=Decimal("12.00"),
+            is_available=True,
+            observed_at=observed_at + timedelta(hours=2),
+        )
+        session.add_all([usd_initial, eur_initial, usd_supply])
+        session.flush()
+        session.add_all(
+            [
+                BalanceChangeEvent(
+                    snapshot_id=usd_initial.id,
+                    provider="stub",
+                    currency="USD",
+                    previous_amount=None,
+                    current_amount=Decimal("10.00"),
+                    change_amount=None,
+                    change_type="INITIAL",
+                    occurred_at=usd_initial.observed_at,
+                ),
+                BalanceChangeEvent(
+                    snapshot_id=eur_initial.id,
+                    provider="stub",
+                    currency="EUR",
+                    previous_amount=None,
+                    current_amount=Decimal("20.00"),
+                    change_amount=None,
+                    change_type="INITIAL",
+                    occurred_at=eur_initial.observed_at,
+                ),
+                BalanceChangeEvent(
+                    snapshot_id=usd_supply.id,
+                    provider="stub",
+                    currency="USD",
+                    previous_amount=Decimal("10.00"),
+                    current_amount=Decimal("12.00"),
+                    change_amount=Decimal("2.00"),
+                    change_type="SUPPLY",
+                    occurred_at=usd_supply.observed_at,
+                ),
+            ]
+        )
+        session.commit()
+
+    history = service.balance_history(
+        "stub",
+        "usd",
+        observed_at + timedelta(minutes=1),
+        observed_at + timedelta(hours=3),
+        100,
+    )
+
+    assert [(event.currency, event.change_type) for event in history.events] == [
+        ("USD", "SUPPLY")
     ]
 
 
@@ -295,3 +347,25 @@ def test_refresh_result_timestamps_serialize_as_utc_z() -> None:
 
     assert payload["started_at"] == "2026-07-25T10:21:10Z"
     assert payload["finished_at"] == "2026-07-25T10:22:10Z"
+
+
+def test_balance_change_event_timestamp_serializes_as_utc_z() -> None:
+    event = BalanceChangeEventValue(
+        id=1,
+        currency="USD",
+        previous_amount="8.00",
+        current_amount="10.00",
+        change_amount="2.00",
+        change_type="SUPPLY",
+        occurred_at=datetime(
+            2026,
+            7,
+            25,
+            18,
+            21,
+            10,
+            tzinfo=timezone(timedelta(hours=8)),
+        ),
+    )
+
+    assert event.model_dump(mode="json")["occurred_at"] == "2026-07-25T10:21:10Z"

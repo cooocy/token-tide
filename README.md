@@ -1,6 +1,6 @@
 # TokenTide 🌊
 
-TokenTide 是一个聚合 AI 平台预充值余额与余额历史的单用户 Dashboard。当前支持 OpenRouter、DeepSeek、SiliconFlow、xAI，以及实验性的 OpenCode Zen。
+TokenTide 是一个聚合 AI 平台预充值余额与余额变动历史的单用户 Dashboard。当前支持 OpenRouter、DeepSeek、SiliconFlow、xAI，以及实验性的 OpenCode Zen。
 
 ## 工程结构
 
@@ -166,10 +166,23 @@ limit        # 默认 100，最大 1000
 ```
 
 金额在写入数据库前按四舍五入保留 2 位小数，接口统一以固定 2 位的十进制字符串返回。
-历史点还会根据同平台、同币种的上一条快照返回 `change_amount` 和
-`change_type`：正向变化为 `SUPPLY`，负向变化为 `CONSUMPTION`，余额未变为
-`UNCHANGED`；没有前序快照时两个字段均为 `null`。历史页会据此展示补给、消耗事件
-及当前已加载区间的汇总。
+`GET /balances` 的当前余额来自每个平台、币种最新的 `balance_snapshot`。
+`GET /balances/{provider}/history` 只查询 `balance_change_event`，响应中的 `events`
+包含：
+
+```text
+id
+currency
+previous_amount
+current_amount
+change_amount
+change_type        # INITIAL、SUPPLY 或 CONSUMPTION
+occurred_at
+```
+
+首次建立余额基线时生成 `INITIAL`，其 `previous_amount` 和 `change_amount` 为 `null`，
+不计入补给或消耗。后续余额增加生成 `SUPPLY`，余额减少生成 `CONSUMPTION`，余额未变
+仍会保留 snapshot，但不会生成事件。历史页使用事件展示区间汇总和阶梯图。
 
 ## 前端
 
@@ -188,10 +201,10 @@ pnpm dev
 
 - 后端启动后异步刷新一次全部已启用平台
 - 定时任务按照配置 cron 刷新
-- 页面可以刷新全部或单个平台
+- 后端保留手动刷新接口用于兼容，前端页面不主动触发刷新
 - 全量刷新并发执行，单个平台失败不会阻断其他平台
 - 失败不会删除或覆盖最后一次成功余额
-- 第一阶段不自动重试，也不自动清理历史快照
+- 不自动重试，也不自动清理历史快照或余额变动事件
 
 ## 安全边界
 

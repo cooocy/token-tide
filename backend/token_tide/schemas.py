@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_serializer
 
-BalanceChangeType = Literal["SUPPLY", "CONSUMPTION", "UNCHANGED"]
+BalanceChangeType = Literal["INITIAL", "SUPPLY", "CONSUMPTION"]
 
 
 def serialize_utc_datetime(value: datetime | None) -> str | None:
@@ -47,15 +47,24 @@ class ProviderBalance(BaseModel):
         return serialize_utc_datetime(value)
 
 
-class HistoryPoint(BalanceValue):
-    change_amount: str | None = None
-    change_type: BalanceChangeType | None = None
+class BalanceChangeEventValue(BaseModel):
+    id: int
+    currency: str
+    previous_amount: str | None
+    current_amount: str
+    change_amount: str | None
+    change_type: BalanceChangeType
+    occurred_at: datetime
+
+    @field_serializer("occurred_at", when_used="json")
+    def serialize_occurred_at(self, value: datetime) -> str | None:
+        return serialize_utc_datetime(value)
 
 
 class BalanceHistory(BaseModel):
     provider: str
     currency: str | None
-    points: list[HistoryPoint]
+    events: list[BalanceChangeEventValue]
 
 
 class ProviderRefreshResult(BaseModel):

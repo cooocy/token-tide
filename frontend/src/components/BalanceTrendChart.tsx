@@ -1,17 +1,14 @@
 import { useMemo, useState, type PointerEvent } from 'react';
-import type { BalanceValue } from '@/api/balance';
-import {
-  formatAmount,
-  formatDateTime,
-} from '@/lib/display';
+import type { BalanceChangeEvent } from '@/api/balance';
+import { formatAmount, formatDateTime } from '@/lib/display';
 
 interface BalanceTrendChartProps {
   currency: string;
-  points: BalanceValue[];
+  events: BalanceChangeEvent[];
 }
 
 interface ChartPoint {
-  source: BalanceValue;
+  source: BalanceChangeEvent;
   x: number;
   y: number;
 }
@@ -24,44 +21,61 @@ const PADDING_BOTTOM = 28;
 
 export default function BalanceTrendChart({
   currency,
-  points,
+  events,
 }: BalanceTrendChartProps) {
   const chart = useMemo(() => {
-    const sorted = [...points]
-      .filter((point) => Number.isFinite(Number(point.available_amount)))
+    const sorted = [...events]
+      .filter((event) => Number.isFinite(Number(event.current_amount)))
       .sort(
         (left, right) =>
-          new Date(left.observed_at).getTime() - new Date(right.observed_at).getTime(),
+          new Date(left.occurred_at).getTime() -
+            new Date(right.occurred_at).getTime() || left.id - right.id,
       );
-    const values = sorted.map((point) => Number(point.available_amount));
+    const values = sorted.flatMap((event, index) => {
+      const current = Number(event.current_amount);
+      if (index !== 0 || event.previous_amount === null) {
+        return [current];
+      }
+      const previous = Number(event.previous_amount);
+      return Number.isFinite(previous) ? [previous, current] : [current];
+    });
     const rawMin = Math.min(...values);
     const rawMax = Math.max(...values);
     const spread = rawMax - rawMin;
-    const breathingRoom = spread === 0 ? Math.max(Math.abs(rawMax) * 0.05, 1) : spread * 0.12;
+    const breathingRoom =
+      spread === 0 ? Math.max(Math.abs(rawMax) * 0.05, 1) : spread * 0.12;
     const min = rawMin - breathingRoom;
     const max = rawMax + breathingRoom;
     const chartWidth = WIDTH - PADDING_X * 2;
     const chartHeight = HEIGHT - PADDING_TOP - PADDING_BOTTOM;
 
+    const yForValue = (value: number): number =>
+      PADDING_TOP + ((max - value) / (max - min)) * chartHeight;
     const chartPoints: ChartPoint[] = sorted.map((source, index) => {
-      const value = Number(source.available_amount);
-      const x =
-        sorted.length === 1
-          ? WIDTH / 2
-          : PADDING_X + (index / (sorted.length - 1)) * chartWidth;
+      const value = Number(source.current_amount);
+      const x = PADDING_X + ((index + 1) / (sorted.length + 1)) * chartWidth;
       const y = PADDING_TOP + ((max - value) / (max - min)) * chartHeight;
       return { source, x, y };
     });
 
-    const line = chartPoints
-      .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
-      .join(' ');
+    const first = sorted[0];
+    const initialValue =
+      first?.previous_amount === null || first?.previous_amount === undefined
+        ? Number(first?.current_amount)
+        : Number(first.previous_amount);
+    const initialY = yForValue(initialValue);
+    const line =
+      chartPoints.length > 0
+        ? [
+            `M ${PADDING_X} ${initialY}`,
+            ...chartPoints.map((point) => `H ${point.x} V ${point.y}`),
+            `H ${WIDTH - PADDING_X}`,
+          ].join(' ')
+        : '';
     const floor = HEIGHT - PADDING_BOTTOM;
     const area =
       chartPoints.length > 0
-        ? `${line} L ${chartPoints.at(-1)?.x ?? PADDING_X} ${floor} L ${
-            chartPoints[0].x
-          } ${floor} Z`
+        ? `${line} L ${WIDTH - PADDING_X} ${floor} L ${PADDING_X} ${floor} Z`
         : '';
 
     return {
@@ -71,7 +85,7 @@ export default function BalanceTrendChart({
       rawMin,
       rawMax,
     };
-  }, [points]);
+  }, [events]);
 
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const activeIndex =
@@ -85,12 +99,23 @@ export default function BalanceTrendChart({
       return;
     }
     const bounds = event.currentTarget.getBoundingClientRect();
-    const ratio = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width));
-    setSelectedIndex(Math.round(ratio * (chart.points.length - 1)));
+    const ratio = Math.min(
+      1,
+      Math.max(0, (event.clientX - bounds.left) / bounds.width),
+    );
+    const svgX = ratio * WIDTH;
+    const nearest = chart.points.reduce(
+      (best, point, index) =>
+        Math.abs(point.x - svgX) < Math.abs(chart.points[best].x - svgX)
+          ? index
+          : best,
+      0,
+    );
+    setSelectedIndex(nearest);
   };
 
   if (chart.points.length === 0) {
-    return <p className="empty-copy">当前币种还没有可绘制的余额记录。</p>;
+    return <p className="empty-copy">当前币种还没有可绘制的余额事件。</p>;
   }
 
   return (
@@ -101,9 +126,9 @@ export default function BalanceTrendChart({
     >
       <div className="trend-readout" aria-live="polite">
         <div>
-          <span>{formatDateTime(activePoint.source.observed_at)}</span>
+          <span>{formatDateTime(activePoint.source.occurred_at)}</span>
           <strong>
-            {currency} {formatAmount(activePoint.source.available_amount)}
+            {currency} {formatAmount(activePoint.source.current_amount)}
           </strong>
         </div>
         <div className="trend-range" aria-label="图表余额范围">
@@ -115,7 +140,7 @@ export default function BalanceTrendChart({
         className="trend-svg"
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         role="img"
-        aria-label={`${currency} 余额趋势，共 ${chart.points.length} 条记录`}
+        aria-label={`${currency} 余额阶梯趋势，共 ${chart.points.length} 个事件`}
         preserveAspectRatio="none"
       >
         <line
