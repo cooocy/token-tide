@@ -192,7 +192,7 @@ export default function ProviderHistoryPage() {
           <ProviderMark provider={provider} />
           <div>
             <p>{formatProviderName(provider)}</p>
-            <span>余额历史</span>
+            <span>余额潮位</span>
           </div>
         </div>
       </header>
@@ -301,7 +301,7 @@ export default function ProviderHistoryPage() {
             <div className="section-heading">
               <div>
                 <p className="section-kicker">LOGBOOK</p>
-                <h2 id="records-title">变动事件</h2>
+                <h2 id="records-title">余额变动</h2>
               </div>
               <span>{selectedCurrency}</span>
             </div>
@@ -326,13 +326,9 @@ export default function ProviderHistoryPage() {
                       {index === 0 && (
                         <span className="latest-label">最近变动</span>
                       )}
-                      <span className="record-event">
-                        {event.change_type === 'INITIAL'
-                          ? '初始余额'
-                          : event.change_type === 'SUPPLY'
-                            ? '补给'
-                            : '消耗'}
-                      </span>
+                      {event.change_type === 'INITIAL' && (
+                        <span className="record-event">初始余额</span>
+                      )}
                     </div>
                     <div className="record-values">
                       <strong>{formatAmount(event.current_amount)}</strong>

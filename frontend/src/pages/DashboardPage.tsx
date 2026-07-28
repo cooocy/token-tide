@@ -174,9 +174,9 @@ export default function DashboardPage() {
                     <Link
                       className="history-link"
                       to={historyUrl}
-                      aria-label={`查看 ${formatProviderName(provider.provider)} 余额趋势`}
+                      aria-label={`查看 ${formatProviderName(provider.provider)} 余额潮位`}
                     >
-                      <span>余额趋势</span>
+                      <span>余额潮位</span>
                       <ArrowIcon />
                     </Link>
                   </div>
