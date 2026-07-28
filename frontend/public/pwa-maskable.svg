@@ -8,7 +8,7 @@
   </defs>
 
   <rect width="256" height="256" fill="#071820" />
-  <g fill="url(#tide-maskable)" transform="translate(40.96 40.96) scale(.68)">
+  <g fill="url(#tide-maskable)" transform="translate(40.96 32.8) scale(.68)">
     <path d="M27 153C13 88 62 24 128 24s115 64 101 129l-14 8c19-56-24-120-87-120S22 105 41 161l-14-8Z" />
     <rect x="105" y="99" width="25" height="72" rx="7" />
     <rect x="145" y="69" width="25" height="102" rx="7" />

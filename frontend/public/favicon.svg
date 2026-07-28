@@ -7,7 +7,7 @@
     </linearGradient>
   </defs>
 
-  <g fill="url(#tide)">
+  <g fill="url(#tide)" transform="translate(0 -12)">
     <path d="M27 153C13 88 62 24 128 24s115 64 101 129l-14 8c19-56-24-120-87-120S22 105 41 161l-14-8Z" />
 
     <rect x="105" y="99" width="25" height="72" rx="7" />
