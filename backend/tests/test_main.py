@@ -1,7 +1,7 @@
 from unittest.mock import Mock, patch
 
+from token_tide.balance.router import router
 from token_tide.main import application_info, main
-from token_tide.router import router
 
 
 def test_application_info_uses_unknown_commit_by_default(

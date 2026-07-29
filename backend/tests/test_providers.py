@@ -5,19 +5,22 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from token_tide.config import (
+from token_tide.balance.config import (
     OpenCodeProviderSettings,
     ProviderSettings,
-    Settings,
     XaiProviderSettings,
 )
-from token_tide.providers import create_providers
-from token_tide.providers.base import ProviderError
-from token_tide.providers.deepseek import DeepSeekProvider
-from token_tide.providers.opencode import OpenCodeProvider, parse_balance_response
-from token_tide.providers.openrouter import OpenRouterProvider
-from token_tide.providers.siliconflow import SiliconFlowProvider
-from token_tide.providers.xai import XaiProvider
+from token_tide.balance.providers import create_providers
+from token_tide.balance.providers.base import ProviderError
+from token_tide.balance.providers.deepseek import DeepSeekProvider
+from token_tide.balance.providers.opencode import (
+    OpenCodeProvider,
+    parse_balance_response,
+)
+from token_tide.balance.providers.openrouter import OpenRouterProvider
+from token_tide.balance.providers.siliconflow import SiliconFlowProvider
+from token_tide.balance.providers.xai import XaiProvider
+from token_tide.config import Settings
 
 
 def provider_settings(base_url: str, proxy_url: str | None = None) -> ProviderSettings:

@@ -6,8 +6,8 @@ from uuid import uuid4
 
 import httpx
 
-from token_tide.config import OpenCodeProviderSettings
-from token_tide.providers.base import (
+from token_tide.balance.config import OpenCodeProviderSettings
+from token_tide.balance.providers.base import (
     BalanceProvider,
     BalanceReading,
     ProviderError,

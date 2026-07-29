@@ -8,10 +8,9 @@ from typing import cast, overload
 from sqlalchemy import Select, desc, select
 from sqlalchemy.orm import Session
 
-from token_tide.models import BalanceChangeEvent, BalanceSnapshot, RefreshRun
-from token_tide.providers.base import BalanceProvider, ProviderError
-from token_tide.response import ApplicationError
-from token_tide.schemas import (
+from token_tide.balance.models import BalanceChangeEvent, BalanceSnapshot, RefreshRun
+from token_tide.balance.providers.base import BalanceProvider, ProviderError
+from token_tide.balance.schemas import (
     BalanceChangeEventValue,
     BalanceChangeType,
     BalanceHistory,
@@ -19,6 +18,7 @@ from token_tide.schemas import (
     ProviderBalance,
     ProviderRefreshResult,
 )
+from token_tide.response import ApplicationError
 
 logger = logging.getLogger(__name__)
 AMOUNT_QUANTUM = Decimal("0.01")

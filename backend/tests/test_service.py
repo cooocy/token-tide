@@ -6,15 +6,24 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from token_tide.models import BalanceChangeEvent, BalanceSnapshot, Base, RefreshRun
-from token_tide.providers.base import BalanceProvider, BalanceReading, ProviderError
-from token_tide.schemas import (
+from token_tide.balance.models import BalanceChangeEvent, BalanceSnapshot, RefreshRun
+from token_tide.balance.providers.base import (
+    BalanceProvider,
+    BalanceReading,
+    ProviderError,
+)
+from token_tide.balance.schemas import (
     BalanceChangeEventValue,
     BalanceValue,
     ProviderBalance,
     ProviderRefreshResult,
 )
-from token_tide.service import BalanceService, decimal_string, normalize_amount
+from token_tide.balance.service import (
+    BalanceService,
+    decimal_string,
+    normalize_amount,
+)
+from token_tide.database import Base
 
 
 class StubProvider(BalanceProvider):

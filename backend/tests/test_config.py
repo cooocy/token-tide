@@ -3,12 +3,14 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from token_tide.config import (
+from token_tide.balance.config import (
     DEFAULT_PROVIDER_ORDER,
-    ConfigurationError,
     OpenCodeProviderSettings,
     ProviderSettings,
     ProvidersSettings,
+)
+from token_tide.config import (
+    ConfigurationError,
     load_settings,
 )
 

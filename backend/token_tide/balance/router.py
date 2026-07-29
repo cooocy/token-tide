@@ -3,10 +3,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from token_tide.dependencies import get_balance_service
+from token_tide.balance.dependencies import get_balance_service
+from token_tide.balance.schemas import (
+    BalanceHistory,
+    ProviderBalance,
+    ProviderRefreshResult,
+)
+from token_tide.balance.service import BalanceService
 from token_tide.response import R, ok
-from token_tide.schemas import BalanceHistory, ProviderBalance, ProviderRefreshResult
-from token_tide.service import BalanceService
 
 router = APIRouter()
 Service = Annotated[BalanceService, Depends(get_balance_service)]

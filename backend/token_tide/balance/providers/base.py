@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 
-from token_tide.config import ProviderConnectionSettings, ProviderSettings
+from token_tide.balance.config import ProviderConnectionSettings, ProviderSettings
 
 
 class ProviderError(RuntimeError):

@@ -3,9 +3,10 @@ import logging
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from token_tide.balance import models as balance_models  # noqa: F401
 from token_tide.bootstrap import bootstrap_settings
+from token_tide.database import Base
 from token_tide.logging import configure_alembic_logging
-from token_tide.models import Base
 
 config = context.config
 configure_alembic_logging()

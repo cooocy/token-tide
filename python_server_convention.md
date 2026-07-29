@@ -35,15 +35,20 @@ backend/token_tide/
 ├── logging.py
 ├── response.py
 ├── bookstore/
-└── providers/
+├── balance/
+└── token_usage/
 ```
 
 - `main.py` owns application assembly, lifespan, Router registration, and the Console Script.
 - `bootstrap.py` owns remote configuration initialization order.
-- `config.py` owns typed YAML settings.
-- `database.py` owns Engine and Session construction and disposal.
+- `config.py` owns application-level typed YAML settings; domain-specific configuration stays
+  in its domain package.
+- `database.py` owns the shared SQLAlchemy Base, Engine and Session construction and disposal.
 - `logging.py` owns application, Uvicorn, and Alembic log routing.
-- Router functions adapt HTTP; Service owns workflows; persistence queries stay outside Router.
+- `balance` owns balance models, Providers, Router, Service, dependencies, and scheduling.
+- `token_usage` owns local coding-agent token usage concepts and must not depend on `balance`.
+- Domain Router functions adapt HTTP; domain Service owns workflows; persistence queries stay
+  outside Router.
 - Avoid generic `utils.py`, `common.py`, and `helpers.py`; name modules after their responsibility.
 
 ## 3. Packaging

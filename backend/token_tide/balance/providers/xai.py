@@ -1,7 +1,12 @@
 from decimal import Decimal
 
-from token_tide.config import XaiProviderSettings
-from token_tide.providers.base import BalanceProvider, BalanceReading, ProviderError, decimal_value
+from token_tide.balance.config import XaiProviderSettings
+from token_tide.balance.providers.base import (
+    BalanceProvider,
+    BalanceReading,
+    ProviderError,
+    decimal_value,
+)
 
 
 class XaiProvider(BalanceProvider):

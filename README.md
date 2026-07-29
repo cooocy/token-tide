@@ -1,12 +1,15 @@
 # TokenTide 🌊
 
-TokenTide 是一个聚合 AI 平台预充值余额与余额变动历史的单用户 Dashboard。当前支持 OpenRouter、DeepSeek、SiliconFlow、xAI，以及实验性的 OpenCode Zen。
+TokenTide 包含两个彼此独立的领域：AI 平台余额监控，以及 coding agent Token
+使用量采集。余额 Dashboard 当前支持 OpenRouter、DeepSeek、SiliconFlow、xAI，
+以及实验性的 OpenCode Zen。
 
 ## 工程结构
 
 ```text
 .
 ├── backend/      # FastAPI API、定时刷新和 MySQL 持久化
+├── cli/          # 独立运行的本地数据采集工具
 ├── frontend/     # React + TypeScript + Vite
 └── docs/plan/    # 实施计划
 ```
@@ -183,6 +186,22 @@ occurred_at
 首次建立余额基线时生成 `INITIAL`，其 `previous_amount` 和 `change_amount` 为 `null`，
 不计入补给或消耗。后续余额增加生成 `SUPPLY`，余额减少生成 `CONSUMPTION`，余额未变
 仍会保留 snapshot，但不会生成事件。历史页使用事件展示区间汇总和阶梯图。
+
+## Token Usage 采集器
+
+`cli/token_usage_collector.py` 直接扫描 Claude Code、Codex 和 OpenCode 的本地数据，
+按工具和模型汇总 Token 使用量及估算花费：
+
+```bash
+python3 cli/token_usage_collector.py
+python3 cli/token_usage_collector.py --since 2026-06-01
+python3 cli/token_usage_collector.py --offline
+python3 cli/token_usage_collector.py -v
+```
+
+采集器是独立 CLI，不依赖后端 wheel。当前版本只保留本地扫描与汇总能力，尚未实现
+服务端上报。后端已经建立独立的 `token_tide.token_usage` 领域骨架；该领域与
+`token_tide.balance` 没有业务关联。
 
 ## 前端
 

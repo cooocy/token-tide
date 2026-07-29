@@ -9,14 +9,14 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from token_tide.balance.dependencies import get_balance_service
+from token_tide.balance.router import router as balance_router
+from token_tide.balance.scheduler import create_scheduler
 from token_tide.bootstrap import bootstrap_settings
 from token_tide.config import Settings, get_settings
 from token_tide.database import dispose_engine
-from token_tide.dependencies import get_balance_service
 from token_tide.logging import configure_application_logging
 from token_tide.response import R, ok, register_exception_handlers
-from token_tide.router import router
-from token_tide.scheduler import create_scheduler
 from token_tide.schemas import ApplicationInfo
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="TokenTide API", version="0.1.0", lifespan=lifespan)
 register_exception_handlers(app)
-app.include_router(router)
+app.include_router(balance_router)
 
 
 @app.get("/", response_model=R[ApplicationInfo])

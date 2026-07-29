@@ -1,10 +1,11 @@
-from token_tide.config import DEFAULT_PROVIDER_ORDER, ProviderName, Settings
-from token_tide.providers.base import BalanceProvider
-from token_tide.providers.deepseek import DeepSeekProvider
-from token_tide.providers.opencode import OpenCodeProvider
-from token_tide.providers.openrouter import OpenRouterProvider
-from token_tide.providers.siliconflow import SiliconFlowProvider
-from token_tide.providers.xai import XaiProvider
+from token_tide.balance.config import DEFAULT_PROVIDER_ORDER, ProviderName
+from token_tide.balance.providers.base import BalanceProvider
+from token_tide.balance.providers.deepseek import DeepSeekProvider
+from token_tide.balance.providers.opencode import OpenCodeProvider
+from token_tide.balance.providers.openrouter import OpenRouterProvider
+from token_tide.balance.providers.siliconflow import SiliconFlowProvider
+from token_tide.balance.providers.xai import XaiProvider
+from token_tide.config import Settings
 
 
 def create_providers(settings: Settings) -> dict[str, BalanceProvider]:
@@ -35,8 +36,4 @@ def create_providers(settings: Settings) -> dict[str, BalanceProvider]:
         *configured_order,
         *(name for name in DEFAULT_PROVIDER_ORDER if name not in configured_order),
     ]
-    return {
-        name: providers[name]
-        for name in resolved_order
-        if providers[name].enabled
-    }
+    return {name: providers[name] for name in resolved_order if providers[name].enabled}

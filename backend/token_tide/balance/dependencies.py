@@ -1,9 +1,9 @@
 from functools import lru_cache
 
+from token_tide.balance.providers import create_providers
+from token_tide.balance.service import BalanceService
 from token_tide.config import get_settings
 from token_tide.database import get_session_factory
-from token_tide.providers import create_providers
-from token_tide.service import BalanceService
 
 
 @lru_cache

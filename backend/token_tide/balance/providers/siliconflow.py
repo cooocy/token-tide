@@ -1,4 +1,9 @@
-from token_tide.providers.base import BalanceProvider, BalanceReading, ProviderError, decimal_value
+from token_tide.balance.providers.base import (
+    BalanceProvider,
+    BalanceReading,
+    ProviderError,
+    decimal_value,
+)
 
 
 class SiliconFlowProvider(BalanceProvider):

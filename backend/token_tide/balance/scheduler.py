@@ -3,8 +3,8 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from token_tide.config import RefreshSettings
-from token_tide.service import BalanceService
+from token_tide.balance.config import RefreshSettings
+from token_tide.balance.service import BalanceService
 
 logger = logging.getLogger(__name__)
 
