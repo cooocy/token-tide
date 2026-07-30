@@ -87,6 +87,10 @@ export default function DashboardPage() {
           <p className="section-kicker">BALANCE DASHBOARD</p>
           <h1 id="overview-title">余额看板</h1>
         </div>
+        <Link className="usage-entry" to="/usage">
+          <span>查看使用量</span>
+          <ArrowIcon />
+        </Link>
       </section>
 
       <div className="message-stack" aria-live="polite">

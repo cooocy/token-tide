@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,7 +14,12 @@ from token_tide.token_usage.schemas import (
     TokenUsageBatchInput,
     TokenUsageBatchResult,
     TokenUsageCheckpointValue,
+    TokenUsageDay,
     TokenUsageEventInput,
+    TokenUsageModelSummary,
+    TokenUsageSummary,
+    TokenUsageToolSummary,
+    TokenUsageTotals,
 )
 
 EVENT_FIELDS = (
@@ -28,6 +33,15 @@ EVENT_FIELDS = (
     "reasoning_tokens",
     "total_tokens",
 )
+TOKEN_FIELDS = (
+    "input_tokens",
+    "output_tokens",
+    "cache_creation_tokens",
+    "cache_read_tokens",
+    "reasoning_tokens",
+    "total_tokens",
+)
+MAX_SUMMARY_RANGE = timedelta(days=31)
 
 
 def normalize_datetime(value: datetime) -> datetime:
@@ -54,6 +68,99 @@ class TokenUsageService:
                 cursor=checkpoint.cursor,
                 updated_at=checkpoint.updated_at,
             )
+
+    def summary(
+        self,
+        tool: TokenUsageTool | None,
+        start_time: datetime,
+        end_time: datetime,
+        timezone_offset_minutes: int,
+    ) -> TokenUsageSummary:
+        start_time = self._require_aware_datetime(start_time)
+        end_time = self._require_aware_datetime(end_time)
+        if start_time >= end_time:
+            raise ApplicationError(422, 42202, "start-time must be before end-time")
+        if end_time - start_time > MAX_SUMMARY_RANGE:
+            raise ApplicationError(422, 42203, "Token usage range cannot exceed 31 days")
+
+        statement = select(TokenUsageEventModel).where(
+            TokenUsageEventModel.occurred_at >= start_time,
+            TokenUsageEventModel.occurred_at < end_time,
+        )
+        if tool is not None:
+            statement = statement.where(TokenUsageEventModel.tool == tool.value)
+        statement = statement.order_by(
+            TokenUsageEventModel.occurred_at,
+            TokenUsageEventModel.id,
+        )
+
+        with self.session_factory() as session:
+            events = session.scalars(statement).all()
+
+        totals = self._empty_totals()
+        tool_totals = {
+            usage_tool: self._empty_totals()
+            for usage_tool in TokenUsageTool
+        }
+        model_totals: dict[str, dict[str, int]] = {}
+        offset = timedelta(minutes=timezone_offset_minutes)
+        daily_totals: dict[date, dict[TokenUsageTool, int]] = {}
+
+        for event in events:
+            event_tool = TokenUsageTool(event.tool)
+            self._add_event(totals, event)
+            self._add_event(tool_totals[event_tool], event)
+
+            model = model_totals.setdefault(
+                event.model,
+                {"event_count": 0, "total_tokens": 0},
+            )
+            model["event_count"] += 1
+            model["total_tokens"] += event.total_tokens
+
+            local_date = (normalize_datetime(event.occurred_at) + offset).date()
+            day = daily_totals.setdefault(
+                local_date,
+                {usage_tool: 0 for usage_tool in TokenUsageTool},
+            )
+            day[event_tool] += event.total_tokens
+
+        first_date = (start_time + offset).date()
+        last_date = (end_time - timedelta(microseconds=1) + offset).date()
+        timeline: list[TokenUsageDay] = []
+        current_date = first_date
+        while current_date <= last_date:
+            day_tools = daily_totals.get(
+                current_date,
+                {usage_tool: 0 for usage_tool in TokenUsageTool},
+            )
+            timeline.append(
+                TokenUsageDay(
+                    date=current_date,
+                    total_tokens=sum(day_tools.values()),
+                    tools=day_tools,
+                )
+            )
+            current_date += timedelta(days=1)
+
+        return TokenUsageSummary(
+            start_time=start_time,
+            end_time=end_time,
+            timezone_offset_minutes=timezone_offset_minutes,
+            totals=TokenUsageTotals(**totals),
+            tools=[
+                TokenUsageToolSummary(tool=usage_tool, **tool_totals[usage_tool])
+                for usage_tool in TokenUsageTool
+            ],
+            timeline=timeline,
+            models=[
+                TokenUsageModelSummary(model=model, **values)
+                for model, values in sorted(
+                    model_totals.items(),
+                    key=lambda item: (-item[1]["total_tokens"], item[0].lower()),
+                )
+            ],
+        )
 
     def ingest(
         self,
@@ -111,6 +218,29 @@ class TokenUsageService:
             unchanged=unchanged,
             cursor=batch.next_cursor,
         )
+
+    @staticmethod
+    def _require_aware_datetime(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ApplicationError(
+                422,
+                42204,
+                "Token usage range timestamps must include timezone",
+            )
+        return value.astimezone(UTC)
+
+    @staticmethod
+    def _empty_totals() -> dict[str, int]:
+        return {"event_count": 0, **{field: 0 for field in TOKEN_FIELDS}}
+
+    @staticmethod
+    def _add_event(
+        totals: dict[str, int],
+        event: TokenUsageEventModel,
+    ) -> None:
+        totals["event_count"] += 1
+        for field in TOKEN_FIELDS:
+            totals[field] += getattr(event, field)
 
     @staticmethod
     def _new_event(

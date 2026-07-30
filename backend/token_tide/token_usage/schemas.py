@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
@@ -64,3 +64,43 @@ class TokenUsageBatchResult(BaseModel):
     updated: int
     unchanged: int
     cursor: dict[str, object]
+
+
+class TokenUsageTotals(BaseModel):
+    event_count: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_creation_tokens: int = 0
+    cache_read_tokens: int = 0
+    reasoning_tokens: int = 0
+    total_tokens: int = 0
+
+
+class TokenUsageToolSummary(TokenUsageTotals):
+    tool: TokenUsageTool
+
+
+class TokenUsageDay(BaseModel):
+    date: date
+    total_tokens: int
+    tools: dict[TokenUsageTool, int]
+
+
+class TokenUsageModelSummary(BaseModel):
+    model: str
+    event_count: int
+    total_tokens: int
+
+
+class TokenUsageSummary(BaseModel):
+    start_time: datetime
+    end_time: datetime
+    timezone_offset_minutes: int
+    totals: TokenUsageTotals
+    tools: list[TokenUsageToolSummary]
+    timeline: list[TokenUsageDay]
+    models: list[TokenUsageModelSummary]
+
+    @field_serializer("start_time", "end_time", when_used="json")
+    def serialize_range_time(self, value: datetime) -> str | None:
+        return serialize_utc(value)

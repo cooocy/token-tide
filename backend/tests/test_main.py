@@ -57,7 +57,19 @@ def test_business_routes_do_not_include_reverse_proxy_prefix() -> None:
         "/refresh/{provider}",
     }
 
-    assert {route.path for route in token_usage_router.routes} == {
+    token_usage_routes = {
+        route.path: route
+        for route in token_usage_router.routes
+    }
+    assert set(token_usage_routes) == {
+        "/token-usage/summary",
         "/token-usage/{tool}/checkpoint",
         "/token-usage/{tool}/events/batch",
     }
+    assert token_usage_routes["/token-usage/summary"].dependencies == []
+    assert len(
+        token_usage_routes["/token-usage/{tool}/checkpoint"].dependencies
+    ) == 1
+    assert len(
+        token_usage_routes["/token-usage/{tool}/events/batch"].dependencies
+    ) == 1

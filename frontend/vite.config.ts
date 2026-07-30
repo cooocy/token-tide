@@ -20,7 +20,7 @@ export default defineConfig(({ mode }) => {
           id: '/',
           name: 'TokenTide',
           short_name: 'TokenTide',
-          description: '聚合查看 AI 平台余额与余额变动历史',
+          description: '聚合查看 AI 平台余额、余额变动与 coding agent Token 使用量',
           lang: 'zh-CN',
           start_url: '/',
           scope: '/',

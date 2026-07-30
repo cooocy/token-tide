@@ -81,3 +81,13 @@ export function formatSignedAmount(value: number): string {
   const sign = value > 0 ? '+' : '';
   return `${sign}${value.toFixed(2)}`;
 }
+
+export function formatTokenCount(value: number, compact = false): string {
+  if (!Number.isFinite(value)) {
+    return '—';
+  }
+  return new Intl.NumberFormat('zh-CN', compact
+    ? { notation: 'compact', maximumFractionDigits: 1 }
+    : { maximumFractionDigits: 0 }
+  ).format(value);
+}

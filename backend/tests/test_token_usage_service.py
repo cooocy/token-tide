@@ -128,6 +128,130 @@ def test_batch_rejects_more_than_500_events() -> None:
         )
 
 
+def test_summary_aggregates_tools_models_and_local_calendar_days(
+    service: tuple[TokenUsageService, sessionmaker[Session]],
+) -> None:
+    usage_service, _ = service
+    usage_service.ingest(
+        TokenUsageTool.CODEX,
+        TokenUsageBatchInput(
+            events=[
+                event(
+                    source_event_id="b" * 64,
+                    occurred_at=datetime(2026, 7, 29, 15, 30, tzinfo=UTC),
+                    model="gpt-5",
+                    input_tokens=70,
+                    output_tokens=30,
+                    total_tokens=100,
+                )
+            ],
+            next_cursor={"version": 1},
+        ),
+    )
+    usage_service.ingest(
+        TokenUsageTool.CLAUDE,
+        TokenUsageBatchInput(
+            events=[
+                event(
+                    source_event_id="c" * 64,
+                    occurred_at=datetime(2026, 7, 29, 16, 30, tzinfo=UTC),
+                    model="claude-sonnet-4",
+                    input_tokens=25,
+                    output_tokens=15,
+                    cache_read_tokens=5,
+                    total_tokens=45,
+                )
+            ],
+            next_cursor={"version": 1},
+        ),
+    )
+
+    summary = usage_service.summary(
+        tool=None,
+        start_time=datetime(2026, 7, 29, 15, tzinfo=UTC),
+        end_time=datetime(2026, 7, 30, 16, tzinfo=UTC),
+        timezone_offset_minutes=480,
+    )
+
+    assert summary.totals.event_count == 2
+    assert summary.totals.total_tokens == 145
+    assert summary.totals.cache_read_tokens == 5
+    assert [day.date.isoformat() for day in summary.timeline] == [
+        "2026-07-29",
+        "2026-07-30",
+    ]
+    assert summary.timeline[0].tools[TokenUsageTool.CODEX] == 100
+    assert summary.timeline[1].tools[TokenUsageTool.CLAUDE] == 45
+    assert summary.timeline[1].total_tokens == 45
+    assert [model.model for model in summary.models] == [
+        "gpt-5",
+        "claude-sonnet-4",
+    ]
+    assert {item.tool: item.total_tokens for item in summary.tools} == {
+        TokenUsageTool.CLAUDE: 45,
+        TokenUsageTool.CODEX: 100,
+        TokenUsageTool.OPENCODE: 0,
+    }
+
+
+def test_summary_filters_one_tool_and_keeps_zero_days(
+    service: tuple[TokenUsageService, sessionmaker[Session]],
+) -> None:
+    usage_service, _ = service
+    usage_service.ingest(
+        TokenUsageTool.CODEX,
+        TokenUsageBatchInput(events=[event()], next_cursor={"version": 1}),
+    )
+
+    summary = usage_service.summary(
+        tool=TokenUsageTool.CLAUDE,
+        start_time=datetime(2026, 7, 29, tzinfo=UTC),
+        end_time=datetime(2026, 7, 31, tzinfo=UTC),
+        timezone_offset_minutes=0,
+    )
+
+    assert summary.totals.total_tokens == 0
+    assert [day.total_tokens for day in summary.timeline] == [0, 0]
+    assert summary.models == []
+
+
+@pytest.mark.parametrize(
+    ("start_time", "end_time", "message"),
+    [
+        (
+            datetime(2026, 7, 30, tzinfo=UTC),
+            datetime(2026, 7, 30, tzinfo=UTC),
+            "before",
+        ),
+        (
+            datetime(2026, 6, 1, tzinfo=UTC),
+            datetime(2026, 7, 30, tzinfo=UTC),
+            "31 days",
+        ),
+        (
+            datetime(2026, 7, 29),
+            datetime(2026, 7, 30, tzinfo=UTC),
+            "timezone",
+        ),
+    ],
+)
+def test_summary_rejects_invalid_ranges(
+    service: tuple[TokenUsageService, sessionmaker[Session]],
+    start_time: datetime,
+    end_time: datetime,
+    message: str,
+) -> None:
+    usage_service, _ = service
+
+    with pytest.raises(ApplicationError, match=message):
+        usage_service.summary(
+            tool=None,
+            start_time=start_time,
+            end_time=end_time,
+            timezone_offset_minutes=0,
+        )
+
+
 def test_failed_commit_does_not_persist_event_or_checkpoint(
     service: tuple[TokenUsageService, sessionmaker[Session]],
 ) -> None:

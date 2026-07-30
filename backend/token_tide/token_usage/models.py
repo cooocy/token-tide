@@ -19,6 +19,10 @@ class TokenUsageEventModel(Base):
             "tool",
             "occurred_at",
         ),
+        Index(
+            "idx_token_usage_event_occurred",
+            "occurred_at",
+        ),
     )
 
     id: Mapped[int] = mapped_column(

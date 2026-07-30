@@ -1,8 +1,8 @@
 # TokenTide 🌊
 
 TokenTide 包含两个彼此独立的领域：AI 平台余额监控，以及 coding agent Token
-使用量采集。余额 Dashboard 当前支持 OpenRouter、DeepSeek、SiliconFlow、xAI，
-以及实验性的 OpenCode Zen。
+使用量采集与查看。余额 Dashboard 当前支持 OpenRouter、DeepSeek、SiliconFlow、
+xAI，以及实验性的 OpenCode Zen。
 
 ## 工程结构
 
@@ -164,6 +164,7 @@ GET  /balances
 GET  /balances/{provider}/history
 POST /refresh
 POST /refresh/{provider}
+GET  /token-usage/summary
 GET  /token-usage/{tool}/checkpoint
 POST /token-usage/{tool}/events/batch
 ```
@@ -176,6 +177,20 @@ start-time
 end-time
 limit        # 默认 100，最大 1000
 ```
+
+Token Usage 汇总接口公开读取，支持：
+
+```text
+tool                       # 可选：claude、codex 或 opencode
+start-time                 # 必填，包含时区
+end-time                   # 必填，包含时区；查询区间右侧不包含
+timezone-offset-minutes    # 必填，本地时间相对 UTC 的分钟偏移
+```
+
+查询跨度最大 31 天。响应包含区间总量、Token 类型明细、各工具汇总、按查看者本地
+日历日聚合的连续趋势，以及模型用量排行。`total_tokens` 是独立统计字段，输入、输出、
+缓存和推理 Token 仅作明细展示，不保证相加后等于总量。汇总接口不返回原始事件；
+checkpoint 与批量上报接口仍要求 Token Usage Bearer Token。
 
 金额在写入数据库前按四舍五入保留 2 位小数，接口统一以固定 2 位的十进制字符串返回。
 `GET /balances` 的当前余额来自每个平台、币种最新的 `balance_snapshot`。
@@ -232,7 +247,9 @@ OPENCODE_DATA_DIR
 
 ## 前端
 
-前端当前只提供路由、统一 API client 和余额数据流骨架，组件库、图表库与最终 Dashboard 视觉尚未确定。
+前端提供余额看板、余额潮位历史和 Token 使用量查看页。使用量页默认查看最近 7 天，
+可切换今天、30 天以及 Claude、Codex、OpenCode 单个工具；每日趋势按浏览器本地
+日界线聚合。
 
 ```bash
 cd frontend
@@ -247,7 +264,9 @@ pnpm dev
 
 生产构建会生成 Web App Manifest 和 Service Worker。通过 HTTPS 部署后，支持的浏览器会在地址栏或系统菜单中提供安装入口；本地开发可通过 `localhost` 验证。安装后的应用以独立窗口启动，新版本发布后由 Service Worker 自动更新。
 
-Service Worker 只预缓存页面外壳和构建产物，不缓存余额或历史 API 响应。断网时可以打开已经访问过的应用页面，但余额数据请求会明确失败，不会把旧金额当作当前余额展示。
+Service Worker 只预缓存页面外壳和构建产物，不缓存余额、历史或使用量 API 响应。
+断网时可以打开已经访问过的应用页面，但数据请求会明确失败，不会把旧数据当作当前
+结果展示。
 
 ## 刷新行为
 

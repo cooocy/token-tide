@@ -147,3 +147,34 @@ def test_token_usage_migration_creates_event_and_checkpoint_tables() -> None:
     downgrade_sql = downgrade_output.getvalue()
     assert "DROP TABLE token_usage_checkpoint" in downgrade_sql
     assert "DROP TABLE token_usage_event" in downgrade_sql
+
+
+def test_token_usage_summary_migration_adds_occurred_time_index() -> None:
+    revision = importlib.import_module(
+        "migrations.versions.202607301546_index_token_usage_occurred_at"
+    )
+    upgrade_output = StringIO()
+    context = MigrationContext.configure(
+        dialect_name="mysql",
+        opts={"as_sql": True, "output_buffer": upgrade_output},
+    )
+
+    with Operations.context(context):
+        revision.upgrade()
+
+    assert (
+        "CREATE INDEX idx_token_usage_event_occurred "
+        "ON token_usage_event (occurred_at)"
+    ) in upgrade_output.getvalue()
+
+    downgrade_output = StringIO()
+    downgrade_context = MigrationContext.configure(
+        dialect_name="mysql",
+        opts={"as_sql": True, "output_buffer": downgrade_output},
+    )
+    with Operations.context(downgrade_context):
+        revision.downgrade()
+
+    assert "DROP INDEX idx_token_usage_event_occurred" in (
+        downgrade_output.getvalue()
+    )

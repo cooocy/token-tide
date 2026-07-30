@@ -1,6 +1,7 @@
+from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from token_tide.response import R, ok
 from token_tide.token_usage.dependencies import (
@@ -12,19 +13,43 @@ from token_tide.token_usage.schemas import (
     TokenUsageBatchInput,
     TokenUsageBatchResult,
     TokenUsageCheckpointValue,
+    TokenUsageSummary,
 )
 from token_tide.token_usage.service import TokenUsageService
 
-router = APIRouter(
-    prefix="/token-usage",
-    dependencies=[Depends(require_token_usage_token)],
-)
+router = APIRouter(prefix="/token-usage")
 Service = Annotated[TokenUsageService, Depends(get_token_usage_service)]
+
+
+@router.get(
+    "/summary",
+    response_model=R[TokenUsageSummary],
+)
+def find_summary(
+    service: Service,
+    start_time: datetime = Query(alias="start-time"),
+    end_time: datetime = Query(alias="end-time"),
+    timezone_offset_minutes: int = Query(
+        alias="timezone-offset-minutes",
+        ge=-840,
+        le=840,
+    ),
+    tool: TokenUsageTool | None = None,
+) -> R[TokenUsageSummary]:
+    return ok(
+        service.summary(
+            tool=tool,
+            start_time=start_time,
+            end_time=end_time,
+            timezone_offset_minutes=timezone_offset_minutes,
+        )
+    )
 
 
 @router.get(
     "/{tool}/checkpoint",
     response_model=R[TokenUsageCheckpointValue],
+    dependencies=[Depends(require_token_usage_token)],
 )
 def find_checkpoint(
     tool: TokenUsageTool,
@@ -36,6 +61,7 @@ def find_checkpoint(
 @router.post(
     "/{tool}/events/batch",
     response_model=R[TokenUsageBatchResult],
+    dependencies=[Depends(require_token_usage_token)],
 )
 def ingest_events(
     tool: TokenUsageTool,
