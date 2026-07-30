@@ -2,6 +2,7 @@ from unittest.mock import Mock, patch
 
 from token_tide.balance.router import router
 from token_tide.main import application_info, main
+from token_tide.token_usage.router import router as token_usage_router
 
 
 def test_application_info_uses_unknown_commit_by_default(
@@ -54,4 +55,9 @@ def test_business_routes_do_not_include_reverse_proxy_prefix() -> None:
         "/balances/{provider}/history",
         "/refresh",
         "/refresh/{provider}",
+    }
+
+    assert {route.path for route in token_usage_router.routes} == {
+        "/token-usage/{tool}/checkpoint",
+        "/token-usage/{tool}/events/batch",
     }

@@ -116,3 +116,34 @@ def test_balance_change_event_migration_creates_latest_snapshot_baselines() -> N
         revision.downgrade()
 
     assert "DROP TABLE balance_change_event" in downgrade_output.getvalue()
+
+
+def test_token_usage_migration_creates_event_and_checkpoint_tables() -> None:
+    revision = importlib.import_module(
+        "migrations.versions.202607301226_create_token_usage_tables"
+    )
+    upgrade_output = StringIO()
+    context = MigrationContext.configure(
+        dialect_name="mysql",
+        opts={"as_sql": True, "output_buffer": upgrade_output},
+    )
+
+    with Operations.context(context):
+        revision.upgrade()
+
+    sql = upgrade_output.getvalue()
+    assert "CREATE TABLE token_usage_event" in sql
+    assert "CREATE TABLE token_usage_checkpoint" in sql
+    assert "UNIQUE (tool, source_event_id)" in sql
+
+    downgrade_output = StringIO()
+    downgrade_context = MigrationContext.configure(
+        dialect_name="mysql",
+        opts={"as_sql": True, "output_buffer": downgrade_output},
+    )
+    with Operations.context(downgrade_context):
+        revision.downgrade()
+
+    downgrade_sql = downgrade_output.getvalue()
+    assert "DROP TABLE token_usage_checkpoint" in downgrade_sql
+    assert "DROP TABLE token_usage_event" in downgrade_sql

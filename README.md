@@ -86,6 +86,13 @@ providers:
 未配置 `order` 时，默认顺序为 OpenRouter、DeepSeek、SiliconFlow、xAI、OpenCode。
 列表中的已禁用平台会被忽略；未知平台名或重复项会导致配置校验失败。
 
+Token Usage 上报接口必须配置独立的 Bearer Token；缺失或为空会阻止服务启动：
+
+```yaml
+token-usage:
+  auth-token: replace-with-a-long-random-token
+```
+
 每个平台可以独立配置可选的 HTTP/HTTPS 代理。例如仅让 xAI 的服务端请求经过本地代理：
 
 ```yaml
@@ -157,6 +164,8 @@ GET  /balances
 GET  /balances/{provider}/history
 POST /refresh
 POST /refresh/{provider}
+GET  /token-usage/{tool}/checkpoint
+POST /token-usage/{tool}/events/batch
 ```
 
 历史接口支持：
@@ -189,19 +198,34 @@ occurred_at
 
 ## Token Usage 采集器
 
-`cli/token_usage_collector.py` 直接扫描 Claude Code、Codex 和 OpenCode 的本地数据，
-按工具和模型汇总 Token 使用量及估算花费：
+`cli/token_usage_collector.py` 是独立的单次同步 CLI。它从服务端回查 Claude Code、
+Codex 和 OpenCode 各自的 cursor，增量读取本地日志并批量上报。首次运行会同步全部
+现存历史：
 
 ```bash
+TOKEN_TIDE_BASE_URL=https://token-tide.example.com/api \
+TOKEN_TIDE_TOKEN_USAGE_TOKEN=replace-with-the-server-token \
 python3 cli/token_usage_collector.py
-python3 cli/token_usage_collector.py --since 2026-06-01
-python3 cli/token_usage_collector.py --offline
-python3 cli/token_usage_collector.py -v
 ```
 
-采集器是独立 CLI，不依赖后端 wheel。当前版本只保留本地扫描与汇总能力，尚未实现
-服务端上报。后端已经建立独立的 `token_tide.token_usage` 领域骨架；该领域与
-`token_tide.balance` 没有业务关联。
+默认每批最多上报 500 条，可通过 `--batch-size` 调小；`--timeout-seconds` 控制请求
+超时，`-v` 将进度写到 stderr。成功批次中的事件写入与 cursor 更新在服务端同一事务
+完成，失败重试不会重复计数。
+
+完整但不合法的本地记录以单行 JSON 输出到 stdout，并在输出后跳过；运行状态和网络
+错误写 stderr。未完成的 JSONL 尾行不会推进 cursor，会在下次运行时继续读取。
+
+可通过以下变量覆盖本地数据目录：
+
+```text
+CLAUDE_CONFIG_DIR
+CODEX_HOME
+OPENCODE_DATA_DIR
+```
+
+采集器完成当前增量后退出，可由 cron 周期执行；不要并发运行多个实例。CLI 不依赖
+后端 wheel，Token Usage 领域也不依赖余额功能。部署本功能前必须更新远端 YAML，并在
+启动新版本前执行 Alembic migration。
 
 ## 前端
 

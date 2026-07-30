@@ -13,6 +13,7 @@ from token_tide.config import (
     ConfigurationError,
     load_settings,
 )
+from token_tide.token_usage.config import TokenUsageSettings
 
 
 def provider_configuration(**overrides: object) -> dict[str, object]:
@@ -82,6 +83,8 @@ database:
   url: mysql+pymysql://user:pass@localhost/token_tide
 http:
   timeout-seconds: 10
+token-usage:
+  auth-token: test-token
 refresh:
   cron: "0 * * * *"
   timezone: UTC
@@ -127,6 +130,8 @@ database:
   url: mysql+pymysql://user:pass@localhost/token_tide
 http:
   timeout-seconds: 10
+token-usage:
+  auth-token: test-token
 refresh:
   cron: "0 * * * *"
   timezone: UTC
@@ -156,6 +161,51 @@ providers:
 
     assert settings.providers.opencode.enabled is False
     assert settings.providers.opencode.base_url == "https://opencode.ai"
+
+
+def test_configuration_requires_token_usage_auth_token(tmp_path: Path) -> None:
+    path = tmp_path / "application-test.yaml"
+    path.write_text(
+        """
+server:
+  host: 127.0.0.1
+  port: 8800
+database:
+  url: sqlite+pysqlite://
+http:
+  timeout-seconds: 10
+refresh:
+  cron: "0 * * * *"
+  timezone: UTC
+providers:
+  openrouter:
+    enabled: false
+    api-key: ""
+    base-url: https://openrouter.ai
+  deepseek:
+    enabled: false
+    api-key: ""
+    base-url: https://api.deepseek.com
+  siliconflow:
+    enabled: false
+    api-key: ""
+    base-url: https://api.siliconflow.com
+  xai:
+    enabled: false
+    api-key: ""
+    base-url: https://management-api.x.ai
+    team-id: ""
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError):
+        load_settings(path)
+
+
+def test_token_usage_auth_token_must_not_be_empty() -> None:
+    with pytest.raises(ValidationError):
+        TokenUsageSettings.model_validate({"auth-token": ""})
 
 
 def test_provider_proxy_url_accepts_http_proxy() -> None:

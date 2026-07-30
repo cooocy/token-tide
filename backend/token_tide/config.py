@@ -8,6 +8,7 @@ from pydantic import Field, ValidationError
 
 from token_tide.balance.config import ProvidersSettings, RefreshSettings
 from token_tide.configuration import ConfigurationModel
+from token_tide.token_usage.config import TokenUsageSettings
 
 
 class ConfigurationError(RuntimeError):
@@ -35,6 +36,7 @@ class Settings(ConfigurationModel):
     http: HttpSettings
     refresh: RefreshSettings
     providers: ProvidersSettings
+    token_usage: TokenUsageSettings
 
 
 def configuration_path() -> Path:

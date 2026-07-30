@@ -1,80 +1,33 @@
 #!/usr/bin/env python3
-"""
-token_usage_collector.py - 扫描并汇总 coding agent 的 token 使用量。
+"""Incrementally upload local coding-agent token usage to TokenTide."""
 
-直接读取 Claude Code、Codex、OpenCode 的本地数据，不依赖 ccusage。
-
-用法:
-    python3 cli/token_usage_collector.py
-    python3 cli/token_usage_collector.py --since 2026-06-01
-    python3 cli/token_usage_collector.py --since 2026-06-01 --until 2026-06-09
-    python3 cli/token_usage_collector.py --offline
-    python3 cli/token_usage_collector.py -v
-"""
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import math
 import os
 import re
 import sqlite3
 import sys
-import tempfile
-import time
-import unicodedata
 import urllib.error
 import urllib.request
-from collections import defaultdict
-from dataclasses import dataclass, replace
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Optional
+from typing import Any, Callable, Optional
 
-TOOL_NAMES = {"claude": "Claude Code", "codex": "Codex", "opencode": "OpenCode"}
-SMALL_TOKEN_THRESHOLD = 50_000
-PRICE_CACHE_TTL_SECONDS = 24 * 60 * 60
-LITELLM_PRICING_URL = (
-    "https://raw.githubusercontent.com/BerriAI/litellm/main/"
-    "model_prices_and_context_window.json"
-)
-MODELS_DEV_PRICING_URL = "https://models.dev/api.json"
+TOOLS = ("claude", "codex", "opencode")
+MAX_BATCH_SIZE = 500
+CURSOR_VERSION = 1
 SEMVER_PREFIX = re.compile(r"^\d+\.\d+\.\d+")
 
 
 @dataclass(frozen=True)
-class UsageRecord:
-    timestamp: datetime
-    tool: str
-    model: str
-    input_tokens: int = 0
-    output_tokens: int = 0
-    cache_creation_tokens: int = 0
-    cache_read_tokens: int = 0
-    reasoning_tokens: int = 0
-    total_tokens: int = 0
-    provider: str = ""
-    recorded_cost: float = 0.0
-    cache_creation_1h_tokens: int = 0
-    speed: str = ""
-    message_id: str = ""
-    request_id: str = ""
-    is_sidechain: bool = False
-
-    def known_total(self) -> int:
-        return (
-            self.input_tokens
-            + self.output_tokens
-            + self.cache_creation_tokens
-            + self.cache_read_tokens
-        )
-
-
-@dataclass
-class ScanStats:
-    files: int = 0
-    records: int = 0
-    skipped: int = 0
-    malformed: int = 0
+class ScanResult:
+    events: list[dict[str, object]]
+    cursor: dict[str, object]
 
 
 def verbose_log(enabled: bool, message: str) -> None:
@@ -82,30 +35,66 @@ def verbose_log(enabled: bool, message: str) -> None:
         print(message, file=sys.stderr)
 
 
-def as_int(value: Any) -> int:
-    if isinstance(value, bool):
-        return 0
-    if isinstance(value, (int, float)):
-        return max(0, int(value))
-    return 0
+def stable_hash(*values: object) -> str:
+    encoded = json.dumps(
+        values,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
-def parse_timestamp(value: Any) -> Optional[datetime]:
+def utc_string(value: datetime) -> str:
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def parse_timestamp(value: object) -> Optional[datetime]:
     if not isinstance(value, str) or not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone()
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(UTC)
 
 
-def local_date(timestamp: datetime) -> str:
-    return timestamp.astimezone().date().isoformat()
+def token_int(mapping: dict[str, Any], key: str) -> int:
+    value = mapping.get(key, 0)
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value < 0
+    ):
+        raise ValueError(f"{key} must be a non-negative number")
+    return int(value)
 
 
-def date_in_range(timestamp: datetime, since: Optional[str], until: Optional[str]) -> bool:
-    date = local_date(timestamp)
-    return (since is None or date >= since) and (until is None or date <= until)
+def output_invalid(
+    tool: str,
+    source: str,
+    position: object,
+    error: str,
+    raw: object,
+) -> None:
+    print(
+        json.dumps(
+            {
+                "tool": tool,
+                "source": source,
+                "position": position,
+                "error": error,
+                "raw": raw,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+            default=str,
+        )
+    )
 
 
 def expand_path(raw: str) -> Path:
@@ -115,38 +104,146 @@ def expand_path(raw: str) -> Path:
 def recursive_files(root: Path, suffix: str) -> list[Path]:
     if not root.is_dir():
         return []
-    return sorted(path for path in root.rglob(f"*{suffix}") if path.is_file())
+    return sorted(candidate for candidate in root.rglob(f"*{suffix}") if candidate.is_file())
+
+
+def file_key(file_path: Path) -> str:
+    return stable_hash(str(file_path.resolve()))
+
+
+def file_identity(file_path: Path) -> dict[str, int]:
+    stat_result = file_path.stat()
+    return {
+        "device": stat_result.st_dev,
+        "inode": stat_result.st_ino,
+    }
+
+
+def initial_offset(
+    file_path: Path,
+    state: dict[str, object],
+) -> tuple[int, dict[str, int]]:
+    identity = file_identity(file_path)
+    saved_identity = state.get("identity")
+    offset = state.get("offset", 0)
+    if (
+        saved_identity != identity
+        or not isinstance(offset, int)
+        or offset < 0
+        or file_path.stat().st_size < offset
+    ):
+        return 0, identity
+    return offset, identity
+
+
+def complete_lines(file_path: Path, offset: int) -> tuple[list[tuple[int, bytes]], int]:
+    lines: list[tuple[int, bytes]] = []
+    with file_path.open("rb") as source:
+        source.seek(offset)
+        while True:
+            position = source.tell()
+            raw = source.readline()
+            if not raw:
+                break
+            if not raw.endswith(b"\n"):
+                try:
+                    json.loads(raw)
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    break
+            lines.append((position, raw))
+            offset = source.tell()
+    return lines, offset
+
+
+def decode_json_line(
+    tool: str,
+    source: str,
+    position: int,
+    raw: bytes,
+) -> Optional[dict[str, Any]]:
+    try:
+        value = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        output_invalid(
+            tool,
+            source,
+            position,
+            str(error),
+            raw.decode("utf-8", errors="replace").rstrip("\n"),
+        )
+        return None
+    if not isinstance(value, dict):
+        output_invalid(tool, source, position, "record must be an object", value)
+        return None
+    return value
+
+
+def event_value(
+    source_event_id: str,
+    occurred_at: datetime,
+    model: str,
+    *,
+    provider: str = "",
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cache_creation_tokens: int = 0,
+    cache_read_tokens: int = 0,
+    reasoning_tokens: int = 0,
+    total_tokens: int = 0,
+) -> dict[str, object]:
+    return {
+        "source_event_id": source_event_id,
+        "occurred_at": utc_string(occurred_at),
+        "reported_at": utc_string(datetime.now(UTC)),
+        "model": model,
+        "provider": provider,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cache_creation_tokens": cache_creation_tokens,
+        "cache_read_tokens": cache_read_tokens,
+        "reasoning_tokens": reasoning_tokens,
+        "total_tokens": total_tokens,
+    }
+
+
+def cursor_files(cursor: dict[str, object]) -> dict[str, dict[str, object]]:
+    if cursor.get("version") != CURSOR_VERSION:
+        return {}
+    files = cursor.get("files")
+    if not isinstance(files, dict):
+        return {}
+    return {
+        str(key): value
+        for key, value in files.items()
+        if isinstance(value, dict)
+    }
 
 
 def claude_config_paths() -> list[Path]:
     configured = os.environ.get("CLAUDE_CONFIG_DIR")
     if configured is not None:
-        paths = []
+        roots = []
         for raw in configured.split(","):
             if not raw.strip():
                 continue
-            path = expand_path(raw.strip())
-            if path.name == "projects" and path.is_dir():
-                path = path.parent
-            if (path / "projects").is_dir() and path not in paths:
-                paths.append(path)
-        if not paths:
-            raise RuntimeError(
-                "CLAUDE_CONFIG_DIR 中没有有效目录；目录应包含 projects/，"
-                "也可以直接指向 projects/"
-            )
-        return paths
-
+            root = expand_path(raw.strip())
+            if root.name == "projects":
+                root = root.parent
+            if (root / "projects").is_dir() and root not in roots:
+                roots.append(root)
+        if not roots:
+            raise RuntimeError("CLAUDE_CONFIG_DIR has no directory containing projects/")
+        return roots
     home = Path.home()
     xdg = Path(os.environ.get("XDG_CONFIG_HOME", home / ".config"))
     return [
-        path
-        for path in (xdg / "claude", home / ".claude")
-        if (path / "projects").is_dir()
+        root
+        for root in (xdg / "claude", home / ".claude")
+        if (root / "projects").is_dir()
     ]
 
 
-def unwrap_claude_entry(raw: dict[str, Any]) -> dict[str, Any]:
+def unwrap_claude(raw: dict[str, Any]) -> dict[str, Any]:
     nested = raw.get("data")
     if isinstance(nested, dict):
         progress = nested.get("message")
@@ -155,132 +252,95 @@ def unwrap_claude_entry(raw: dict[str, Any]) -> dict[str, Any]:
     return raw
 
 
-def valid_claude_entry(entry: dict[str, Any], message: dict[str, Any]) -> bool:
-    version = entry.get("version")
-    if isinstance(version, str) and not SEMVER_PREFIX.match(version):
-        return False
-    for value in (
-        entry.get("sessionId"),
-        entry.get("requestId"),
-        message.get("id"),
-        message.get("model"),
-    ):
-        if value == "":
-            return False
-    return True
-
-
-def claude_record(raw: dict[str, Any]) -> Optional[UsageRecord]:
-    entry = unwrap_claude_entry(raw)
+def claude_event(
+    raw: dict[str, Any],
+    source: str,
+    position: int,
+) -> Optional[tuple[dict[str, object], tuple[int, int]]]:
+    entry = unwrap_claude(raw)
     message = entry.get("message")
-    if not isinstance(message, dict) or not valid_claude_entry(entry, message):
+    if not isinstance(message, dict) or "usage" not in message:
         return None
-    usage = message.get("usage")
-    timestamp = parse_timestamp(entry.get("timestamp"))
-    if not isinstance(usage, dict) or timestamp is None:
+    try:
+        usage = message["usage"]
+        if not isinstance(usage, dict):
+            raise ValueError("usage must be an object")
+        version = entry.get("version")
+        if isinstance(version, str) and not SEMVER_PREFIX.match(version):
+            raise ValueError("unsupported version")
+        occurred_at = parse_timestamp(entry.get("timestamp"))
+        model = message.get("model")
+        if occurred_at is None:
+            raise ValueError("timestamp must include timezone")
+        if not isinstance(model, str) or not model or model == "<synthetic>":
+            raise ValueError("model is missing or synthetic")
+        cache_detail = usage.get("cache_creation")
+        if isinstance(cache_detail, dict):
+            cache_creation = token_int(
+                cache_detail,
+                "ephemeral_5m_input_tokens",
+            ) + token_int(cache_detail, "ephemeral_1h_input_tokens")
+        else:
+            cache_creation = token_int(usage, "cache_creation_input_tokens")
+        input_tokens = token_int(usage, "input_tokens")
+        output_tokens = token_int(usage, "output_tokens")
+        cache_read = token_int(usage, "cache_read_input_tokens")
+        message_id = message.get("id")
+        identity = (
+            ("message", message_id)
+            if isinstance(message_id, str) and message_id
+            else ("fallback", source, position, raw)
+        )
+        event = event_value(
+            stable_hash("claude", identity),
+            occurred_at,
+            model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_creation_tokens=cache_creation,
+            cache_read_tokens=cache_read,
+            total_tokens=input_tokens + output_tokens + cache_creation + cache_read,
+        )
+        rank = (
+            0 if entry.get("isSidechain") is True else 1,
+            int(event["total_tokens"]),
+        )
+        return event, rank
+    except (TypeError, ValueError) as error:
+        output_invalid("claude", source, position, str(error), raw)
         return None
 
-    model = message.get("model")
-    if not isinstance(model, str) or not model or model == "<synthetic>":
-        return None
-    cache_detail = usage.get("cache_creation")
-    cache_5m = cache_1h = 0
-    if isinstance(cache_detail, dict):
-        cache_5m = as_int(cache_detail.get("ephemeral_5m_input_tokens"))
-        cache_1h = as_int(cache_detail.get("ephemeral_1h_input_tokens"))
-        cache_creation = cache_5m + cache_1h
-    else:
-        cache_creation = as_int(usage.get("cache_creation_input_tokens"))
 
-    record = UsageRecord(
-        timestamp=timestamp,
-        tool="claude",
-        model=model,
-        input_tokens=as_int(usage.get("input_tokens")),
-        output_tokens=as_int(usage.get("output_tokens")),
-        cache_creation_tokens=cache_creation,
-        cache_read_tokens=as_int(usage.get("cache_read_input_tokens")),
-        recorded_cost=float(entry.get("costUSD") or 0),
-        cache_creation_1h_tokens=cache_1h,
-        speed=usage.get("speed") if isinstance(usage.get("speed"), str) else "",
-        message_id=message.get("id") if isinstance(message.get("id"), str) else "",
-        request_id=entry.get("requestId") if isinstance(entry.get("requestId"), str) else "",
-        is_sidechain=entry.get("isSidechain") is True,
+def scan_claude(cursor: dict[str, object]) -> ScanResult:
+    previous_files = cursor_files(cursor)
+    next_files = dict(previous_files)
+    preferred: dict[str, tuple[dict[str, object], tuple[int, int]]] = {}
+    for file_path in [
+        candidate
+        for root in claude_config_paths()
+        for candidate in recursive_files(root / "projects", ".jsonl")
+    ]:
+        key = file_key(file_path)
+        state = previous_files.get(key, {})
+        offset, identity = initial_offset(file_path, state)
+        lines, next_offset = complete_lines(file_path, offset)
+        for position, raw_bytes in lines:
+            raw = decode_json_line("claude", key, position, raw_bytes)
+            if raw is None:
+                continue
+            candidate = claude_event(raw, key, position)
+            if candidate is None:
+                continue
+            event, rank = candidate
+            source_id = str(event["source_event_id"])
+            current = preferred.get(source_id)
+            if current is None or rank > current[1]:
+                preferred[source_id] = (event, rank)
+        next_files[key] = {"identity": identity, "offset": next_offset}
+    return ScanResult(
+        events=[value[0] for value in preferred.values()],
+        cursor={"version": CURSOR_VERSION, "files": next_files},
     )
-    return replace(record, total_tokens=record.known_total())
-
-
-def prefer_claude_record(candidate: UsageRecord, existing: UsageRecord) -> bool:
-    if candidate.is_sidechain != existing.is_sidechain:
-        return existing.is_sidechain
-    if candidate.total_tokens != existing.total_tokens:
-        return candidate.total_tokens > existing.total_tokens
-    if candidate.recorded_cost != existing.recorded_cost:
-        return candidate.recorded_cost > existing.recorded_cost
-    return bool(candidate.speed and not existing.speed)
-
-
-def load_claude_records(verbose: bool) -> tuple[list[UsageRecord], ScanStats]:
-    stats = ScanStats()
-    records: list[UsageRecord] = []
-    exact_indexes: dict[tuple[str, str], int] = {}
-    message_indexes: dict[str, list[int]] = defaultdict(list)
-    paths = claude_config_paths()
-    files = [
-        file
-        for config in paths
-        for file in recursive_files(config / "projects", ".jsonl")
-    ]
-    stats.files = len(files)
-
-    for path in files:
-        try:
-            lines = path.open(encoding="utf-8", errors="replace")
-        except OSError:
-            stats.skipped += 1
-            continue
-        with lines:
-            for line in lines:
-                if '"usage":{' not in line:
-                    continue
-                try:
-                    raw = json.loads(line)
-                except json.JSONDecodeError:
-                    stats.malformed += 1
-                    continue
-                record = claude_record(raw)
-                if record is None:
-                    stats.skipped += 1
-                    continue
-
-                index: Optional[int] = None
-                if record.message_id:
-                    index = exact_indexes.get((record.message_id, record.request_id))
-                    if index is None:
-                        for candidate_index in message_indexes.get(record.message_id, []):
-                            existing = records[candidate_index]
-                            if record.is_sidechain or existing.is_sidechain:
-                                index = candidate_index
-                                break
-                if index is not None:
-                    if prefer_claude_record(record, records[index]):
-                        records[index] = record
-                        exact_indexes[(record.message_id, record.request_id)] = index
-                    continue
-
-                index = len(records)
-                records.append(record)
-                if record.message_id:
-                    exact_indexes[(record.message_id, record.request_id)] = index
-                    message_indexes[record.message_id].append(index)
-
-    stats.records = len(records)
-    verbose_log(
-        verbose,
-        f"[Claude Code] paths={len(paths)} files={stats.files} "
-        f"records={stats.records} skipped={stats.skipped} malformed={stats.malformed}",
-    )
-    return records, stats
 
 
 def codex_home_paths() -> list[Path]:
@@ -294,132 +354,142 @@ def codex_files() -> list[Path]:
     files: list[Path] = []
     seen: set[tuple[Path, Path]] = set()
     for home in codex_home_paths():
-        roots = [path for path in (home / "sessions", home / "archived_sessions") if path.is_dir()]
-        if not roots:
-            roots = [home]
+        roots = [
+            root
+            for root in (home / "sessions", home / "archived_sessions")
+            if root.is_dir()
+        ] or [home]
         for root in roots:
-            for path in recursive_files(root, ".jsonl"):
-                relative = path.relative_to(root)
-                key = (home.resolve(), relative)
-                if key not in seen:
-                    seen.add(key)
-                    files.append(path)
+            for file_path in recursive_files(root, ".jsonl"):
+                relative = file_path.relative_to(root)
+                identity = (home.resolve(), relative)
+                if identity not in seen:
+                    seen.add(identity)
+                    files.append(file_path)
     return sorted(files)
 
 
-def subtract_usage(current: dict[str, Any], previous: Optional[dict[str, Any]]) -> dict[str, int]:
-    previous = previous or {}
-    keys = (
-        "input_tokens",
-        "cached_input_tokens",
-        "output_tokens",
-        "reasoning_output_tokens",
-        "total_tokens",
-    )
-    return {key: max(0, as_int(current.get(key)) - as_int(previous.get(key))) for key in keys}
+def numeric_usage(raw: dict[str, Any]) -> dict[str, int]:
+    return {
+        key: token_int(raw, key)
+        for key in (
+            "input_tokens",
+            "cached_input_tokens",
+            "output_tokens",
+            "reasoning_output_tokens",
+            "total_tokens",
+        )
+    }
 
 
-def codex_usage_record(
-    timestamp: datetime,
-    model: str,
-    usage: dict[str, Any],
-) -> Optional[UsageRecord]:
-    raw_input = as_int(usage.get("input_tokens"))
-    cached = min(as_int(usage.get("cached_input_tokens")), raw_input)
-    output = as_int(usage.get("output_tokens"))
-    reasoning = as_int(usage.get("reasoning_output_tokens"))
-    total = as_int(usage.get("total_tokens")) or raw_input + output
-    if raw_input == 0 and output == 0 and reasoning == 0:
-        return None
-    return UsageRecord(
-        timestamp=timestamp,
-        tool="codex",
-        model=model or "gpt-5",
-        input_tokens=raw_input - cached,
-        output_tokens=output,
-        cache_read_tokens=cached,
-        reasoning_tokens=reasoning,
-        total_tokens=total,
-    )
+def subtract_usage(
+    current: dict[str, int],
+    previous: dict[str, int],
+) -> dict[str, int]:
+    return {key: max(0, value - previous.get(key, 0)) for key, value in current.items()}
 
 
-def read_codex_file(path: Path, stats: ScanStats) -> Iterator[UsageRecord]:
-    previous_totals: Optional[dict[str, Any]] = None
-    current_model = ""
-    try:
-        lines = path.open(encoding="utf-8", errors="replace")
-    except OSError:
-        stats.skipped += 1
-        return
-
-    with lines:
-        for line in lines:
-            if '"type":"turn_context"' not in line and '"type":"event_msg"' not in line:
-                continue
-            try:
-                raw = json.loads(line)
-            except json.JSONDecodeError:
-                stats.malformed += 1
+def scan_codex(cursor: dict[str, object]) -> ScanResult:
+    previous_files = cursor_files(cursor)
+    next_files = dict(previous_files)
+    events: list[dict[str, object]] = []
+    for file_path in codex_files():
+        key = file_key(file_path)
+        state = previous_files.get(key, {})
+        offset, identity = initial_offset(file_path, state)
+        reset = offset == 0
+        model = "" if reset else str(state.get("model") or "")
+        session_id = "" if reset else str(state.get("session_id") or "")
+        event_index = 0 if reset else int(state.get("event_index") or 0)
+        saved_totals = state.get("previous_totals")
+        previous_totals = (
+            {
+                str(name): int(value)
+                for name, value in saved_totals.items()
+                if isinstance(value, int)
+            }
+            if not reset and isinstance(saved_totals, dict)
+            else {}
+        )
+        lines, next_offset = complete_lines(file_path, offset)
+        for position, raw_bytes in lines:
+            raw = decode_json_line("codex", key, position, raw_bytes)
+            if raw is None:
                 continue
             payload = raw.get("payload")
             if not isinstance(payload, dict):
                 continue
-            if raw.get("type") == "turn_context":
-                model = payload.get("model") or payload.get("model_name")
-                if isinstance(model, str) and model:
-                    current_model = model
+            raw_type = raw.get("type")
+            if raw_type == "session_meta":
+                candidate_id = payload.get("id")
+                if isinstance(candidate_id, str) and candidate_id:
+                    session_id = candidate_id
                 continue
-            if raw.get("type") != "event_msg" or payload.get("type") != "token_count":
+            if raw_type == "turn_context":
+                candidate_model = payload.get("model") or payload.get("model_name")
+                if isinstance(candidate_model, str) and candidate_model:
+                    model = candidate_model
                 continue
-            timestamp = parse_timestamp(raw.get("timestamp"))
-            info = payload.get("info")
-            if timestamp is None or not isinstance(info, dict):
-                stats.skipped += 1
+            if raw_type != "event_msg" or payload.get("type") != "token_count":
                 continue
-            total_usage = info.get("total_token_usage")
-            usage = info.get("last_token_usage")
-            if not isinstance(usage, dict):
-                if not isinstance(total_usage, dict):
+            event_index += 1
+            try:
+                occurred_at = parse_timestamp(raw.get("timestamp"))
+                info = payload.get("info")
+                if occurred_at is None or not isinstance(info, dict):
+                    raise ValueError("token_count requires timestamp and info")
+                total_raw = info.get("total_token_usage")
+                total_usage = numeric_usage(total_raw) if isinstance(total_raw, dict) else {}
+                last_raw = info.get("last_token_usage")
+                if isinstance(last_raw, dict):
+                    usage = numeric_usage(last_raw)
+                elif total_usage:
+                    usage = subtract_usage(total_usage, previous_totals)
+                else:
+                    raise ValueError("token_count has no usage object")
+                if total_usage:
+                    previous_totals = total_usage
+                candidate_model = (
+                    payload.get("model")
+                    or payload.get("model_name")
+                    or info.get("model")
+                )
+                if isinstance(candidate_model, str) and candidate_model:
+                    model = candidate_model
+                raw_input = usage["input_tokens"]
+                cached = min(usage["cached_input_tokens"], raw_input)
+                output = usage["output_tokens"]
+                reasoning = usage["reasoning_output_tokens"]
+                total = usage["total_tokens"] or raw_input + output
+                if raw_input == 0 and output == 0 and reasoning == 0:
                     continue
-                usage = subtract_usage(total_usage, previous_totals)
-            if isinstance(total_usage, dict):
-                previous_totals = total_usage
-            model = payload.get("model") or payload.get("model_name") or info.get("model")
-            if isinstance(model, str) and model:
-                current_model = model
-            record = codex_usage_record(timestamp, current_model, usage)
-            if record is not None:
-                yield record
-
-
-def load_codex_records(verbose: bool) -> tuple[list[UsageRecord], ScanStats]:
-    stats = ScanStats()
-    files = codex_files()
-    stats.files = len(files)
-    records: list[UsageRecord] = []
-    seen: set[tuple[Any, ...]] = set()
-    for path in files:
-        for record in read_codex_file(path, stats):
-            key = (
-                record.timestamp,
-                record.model,
-                record.input_tokens,
-                record.cache_read_tokens,
-                record.output_tokens,
-                record.reasoning_tokens,
-                record.total_tokens,
-            )
-            if key in seen:
-                continue
-            seen.add(key)
-            records.append(record)
-    stats.records = len(records)
-    verbose_log(
-        verbose,
-        f"[Codex] homes={len(codex_home_paths())} files={stats.files} "
-        f"records={stats.records} skipped={stats.skipped} malformed={stats.malformed}",
+                logical_session = session_id or file_path.stem
+                events.append(
+                    event_value(
+                        stable_hash("codex", logical_session, event_index),
+                        occurred_at,
+                        model or "gpt-5",
+                        input_tokens=raw_input - cached,
+                        output_tokens=output,
+                        cache_read_tokens=cached,
+                        reasoning_tokens=reasoning,
+                        total_tokens=total,
+                    )
+                )
+            except (TypeError, ValueError) as error:
+                output_invalid("codex", key, position, str(error), raw)
+        next_files[key] = {
+            "identity": identity,
+            "offset": next_offset,
+            "model": model,
+            "session_id": session_id,
+            "event_index": event_index,
+            "previous_totals": previous_totals,
+        }
+    return ScanResult(
+        events=events,
+        cursor={"version": CURSOR_VERSION, "files": next_files},
     )
-    return records, stats
 
 
 def opencode_paths() -> list[Path]:
@@ -434,527 +504,329 @@ def opencode_db_path(root: Path) -> Optional[Path]:
     if default.is_file():
         return default
     candidates = sorted(
-        path
-        for path in root.glob("opencode-*.db")
-        if re.fullmatch(r"opencode-[A-Za-z0-9_-]+\.db", path.name)
+        candidate
+        for candidate in root.glob("opencode-*.db")
+        if re.fullmatch(r"opencode-[A-Za-z0-9_-]+\.db", candidate.name)
     )
     return candidates[0] if candidates else None
 
 
-def opencode_record(
+def opencode_event(
     raw: dict[str, Any],
-    message_id: str = "",
-) -> Optional[UsageRecord]:
+    message_id: str,
+    source: str,
+    position: object,
+) -> Optional[dict[str, object]]:
     if raw.get("role") not in (None, "assistant"):
         return None
-    tokens = raw.get("tokens")
-    model = raw.get("modelID")
-    provider = raw.get("providerID")
-    created = (raw.get("time") or {}).get("created") if isinstance(raw.get("time"), dict) else None
-    if not isinstance(tokens, dict) or not isinstance(model, str) or not model:
+    try:
+        tokens = raw.get("tokens")
+        model = raw.get("modelID")
+        provider = raw.get("providerID")
+        time_value = raw.get("time")
+        created = time_value.get("created") if isinstance(time_value, dict) else None
+        if not isinstance(tokens, dict):
+            raise ValueError("tokens must be an object")
+        if not isinstance(model, str) or not model:
+            raise ValueError("modelID is required")
+        if not isinstance(created, (int, float)):
+            raise ValueError("time.created is required")
+        cache = tokens.get("cache")
+        cache = cache if isinstance(cache, dict) else {}
+        input_tokens = token_int(tokens, "input")
+        raw_output = token_int(tokens, "output")
+        cache_creation = token_int(cache, "write")
+        cache_read = token_int(cache, "read")
+        reasoning = token_int(tokens, "reasoning")
+        known = input_tokens + raw_output + cache_creation + cache_read
+        total = token_int(tokens, "total") or known
+        if total == 0:
+            return None
+        return event_value(
+            stable_hash("opencode", message_id),
+            datetime.fromtimestamp(created / 1000, tz=UTC),
+            model,
+            provider=provider if isinstance(provider, str) else "",
+            input_tokens=input_tokens,
+            output_tokens=raw_output + max(0, total - known),
+            cache_creation_tokens=cache_creation,
+            cache_read_tokens=cache_read,
+            reasoning_tokens=reasoning,
+            total_tokens=total,
+        )
+    except (OSError, OverflowError, TypeError, ValueError) as error:
+        output_invalid("opencode", source, position, str(error), raw)
         return None
-    if not isinstance(created, (int, float)):
-        return None
-    timestamp = datetime.fromtimestamp(created / 1000).astimezone()
-    cache = tokens.get("cache") if isinstance(tokens.get("cache"), dict) else {}
-    raw_output = as_int(tokens.get("output"))
-    known = (
-        as_int(tokens.get("input"))
-        + raw_output
-        + as_int(cache.get("write"))
-        + as_int(cache.get("read"))
-    )
-    total = as_int(tokens.get("total"))
-    extra = max(0, total - known)
-    if total == 0:
-        total = known
-    if total == 0:
-        return None
-    return UsageRecord(
-        timestamp=timestamp,
-        tool="opencode",
-        model=model,
-        provider=provider if isinstance(provider, str) else "",
-        input_tokens=as_int(tokens.get("input")),
-        output_tokens=raw_output + extra,
-        cache_creation_tokens=as_int(cache.get("write")),
-        cache_read_tokens=as_int(cache.get("read")),
-        reasoning_tokens=as_int(tokens.get("reasoning")),
-        total_tokens=total,
-        recorded_cost=float(raw.get("cost") or 0),
-        message_id=message_id or (raw.get("id") if isinstance(raw.get("id"), str) else ""),
-    )
 
 
-def load_opencode_records(verbose: bool) -> tuple[list[UsageRecord], ScanStats]:
-    stats = ScanStats()
-    records: list[UsageRecord] = []
-    seen: set[str] = set()
-    roots = opencode_paths()
-    for root in roots:
-        db_path = opencode_db_path(root)
-        if db_path is not None:
-            stats.files += 1
+def scan_opencode(cursor: dict[str, object]) -> ScanResult:
+    previous_databases = (
+        cursor.get("databases")
+        if cursor.get("version") == CURSOR_VERSION
+        and isinstance(cursor.get("databases"), dict)
+        else {}
+    )
+    previous_files = cursor_files(cursor)
+    next_databases = dict(previous_databases)
+    next_files = dict(previous_files)
+    events: dict[str, dict[str, object]] = {}
+    for root in opencode_paths():
+        database = opencode_db_path(root)
+        if database is not None:
+            key = file_key(database)
+            state = previous_databases.get(key)
+            identity = file_identity(database)
+            watermark = (
+                int(state.get("time_updated", -1))
+                if isinstance(state, dict) and state.get("identity") == identity
+                else -1
+            )
+            maximum = watermark
             try:
-                uri = f"file:{db_path}?mode=ro"
+                uri = f"file:{database}?mode=ro"
                 with sqlite3.connect(uri, uri=True) as connection:
-                    for message_id, data in connection.execute("SELECT id, data FROM message"):
+                    current_maximum = connection.execute(
+                        "SELECT MAX(time_updated) FROM message"
+                    ).fetchone()[0]
+                    if current_maximum is not None and int(current_maximum) < watermark:
+                        watermark = -1
+                        maximum = -1
+                    rows = connection.execute(
+                        """
+                        SELECT id, time_updated, data
+                        FROM message
+                        WHERE time_updated >= ?
+                        ORDER BY time_updated, id
+                        """,
+                        (watermark,),
+                    )
+                    for message_id, time_updated, data in rows:
+                        maximum = max(maximum, int(time_updated))
                         try:
                             raw = json.loads(data)
-                        except (TypeError, json.JSONDecodeError):
-                            stats.malformed += 1
+                        except (TypeError, json.JSONDecodeError) as error:
+                            output_invalid(
+                                "opencode",
+                                key,
+                                message_id,
+                                str(error),
+                                data,
+                            )
                             continue
-                        record = opencode_record(raw, str(message_id))
-                        if record is None:
-                            stats.skipped += 1
+                        if not isinstance(raw, dict):
+                            output_invalid(
+                                "opencode",
+                                key,
+                                message_id,
+                                "record must be an object",
+                                raw,
+                            )
                             continue
-                        if record.message_id and record.message_id in seen:
-                            continue
-                        if record.message_id:
-                            seen.add(record.message_id)
-                        records.append(record)
+                        event = opencode_event(raw, str(message_id), key, message_id)
+                        if event is not None:
+                            events[str(event["source_event_id"])] = event
             except sqlite3.Error as error:
-                raise RuntimeError(f"无法读取 OpenCode 数据库 {db_path}: {error}") from error
+                raise RuntimeError(
+                    f"Unable to read OpenCode database {database}: {error}"
+                ) from error
+            next_databases[key] = {
+                "identity": identity,
+                "time_updated": maximum,
+            }
+            continue
 
-        for path in recursive_files(root / "storage" / "message", ".json"):
-            stats.files += 1
+        for file_path in recursive_files(root / "storage" / "message", ".json"):
+            key = file_key(file_path)
+            raw_bytes = file_path.read_bytes()
+            fingerprint = hashlib.sha256(raw_bytes).hexdigest()
+            state = previous_files.get(key, {})
+            if state.get("fingerprint") == fingerprint:
+                continue
             try:
-                raw = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                stats.malformed += 1
-                continue
-            record = opencode_record(raw)
-            if record is None:
-                stats.skipped += 1
-                continue
-            if record.message_id and record.message_id in seen:
-                continue
-            if record.message_id:
-                seen.add(record.message_id)
-            records.append(record)
+                raw = json.loads(raw_bytes)
+            except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                output_invalid(
+                    "opencode",
+                    key,
+                    0,
+                    str(error),
+                    raw_bytes.decode("utf-8", errors="replace"),
+                )
+            else:
+                if isinstance(raw, dict):
+                    message_id = raw.get("id")
+                    if not isinstance(message_id, str) or not message_id:
+                        message_id = file_path.stem
+                    event = opencode_event(raw, message_id, key, 0)
+                    if event is not None:
+                        events[str(event["source_event_id"])] = event
+                else:
+                    output_invalid(
+                        "opencode",
+                        key,
+                        0,
+                        "record must be an object",
+                        raw,
+                    )
+            stat_result = file_path.stat()
+            next_files[key] = {
+                "identity": file_identity(file_path),
+                "size": stat_result.st_size,
+                "mtime_ns": stat_result.st_mtime_ns,
+                "fingerprint": fingerprint,
+            }
+    return ScanResult(
+        events=list(events.values()),
+        cursor={
+            "version": CURSOR_VERSION,
+            "databases": next_databases,
+            "files": next_files,
+        },
+    )
 
-    stats.records = len(records)
+
+class TokenTideClient:
+    def __init__(self, base_url: str, token: str, timeout: float) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.token = token
+        self.timeout = timeout
+
+    def checkpoint(self, tool: str) -> dict[str, object]:
+        data = self._request("GET", f"/token-usage/{tool}/checkpoint")
+        cursor = data.get("cursor")
+        if not isinstance(cursor, dict):
+            raise RuntimeError(f"Server returned an invalid {tool} cursor")
+        return cursor
+
+    def submit(
+        self,
+        tool: str,
+        events: list[dict[str, object]],
+        cursor: dict[str, object],
+    ) -> dict[str, object]:
+        return self._request(
+            "POST",
+            f"/token-usage/{tool}/events/batch",
+            {"events": events, "next_cursor": cursor},
+        )
+
+    def _request(
+        self,
+        method: str,
+        endpoint: str,
+        body: Optional[dict[str, object]] = None,
+    ) -> dict[str, object]:
+        encoded = (
+            json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode()
+            if body is not None
+            else None
+        )
+        request = urllib.request.Request(
+            self.base_url + endpoint,
+            data=encoded,
+            method=method,
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {self.token}",
+                **({"Content-Type": "application/json"} if encoded is not None else {}),
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                payload = json.load(response)
+        except urllib.error.HTTPError as error:
+            detail = error.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"TokenTide HTTP {error.code}: {detail}") from error
+        except (OSError, ValueError, urllib.error.URLError) as error:
+            raise RuntimeError(f"TokenTide request failed: {error}") from error
+        if not isinstance(payload, dict) or payload.get("success") is not True:
+            raise RuntimeError("TokenTide returned an unsuccessful response")
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise RuntimeError("TokenTide response has no data object")
+        return data
+
+
+def sync_tool(
+    client: TokenTideClient,
+    tool: str,
+    scanner: Callable[[dict[str, object]], ScanResult],
+    batch_size: int,
+    verbose: bool,
+) -> None:
+    previous_cursor = client.checkpoint(tool)
+    result = scanner(previous_cursor)
+    if not result.events and result.cursor == previous_cursor:
+        verbose_log(verbose, f"[{tool}] no changes")
+        return
+    batches = [
+        result.events[index : index + batch_size]
+        for index in range(0, len(result.events), batch_size)
+    ]
+    if not batches:
+        batches = [[]]
+    for index, batch in enumerate(batches):
+        final = index == len(batches) - 1
+        client.submit(
+            tool,
+            batch,
+            result.cursor if final else previous_cursor,
+        )
     verbose_log(
         verbose,
-        f"[OpenCode] paths={len(roots)} files={stats.files} records={stats.records} "
-        f"skipped={stats.skipped} malformed={stats.malformed}",
+        f"[{tool}] events={len(result.events)} batches={len(batches)} cursor=updated",
     )
-    return records, stats
-
-
-def price_cache_path() -> Path:
-    override = os.environ.get("TOKEN_USAGE_PRICING_FILE")
-    if override:
-        return expand_path(override)
-    cache_home = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
-    return cache_home / "token-usage" / "pricing.json"
-
-
-def read_json_url(url: str) -> dict[str, Any]:
-    request = urllib.request.Request(url, headers={"User-Agent": "token-usage/1"})
-    with urllib.request.urlopen(request, timeout=10) as response:
-        data = json.load(response)
-    if not isinstance(data, dict):
-        raise ValueError(f"价格源不是 JSON object: {url}")
-    return data
-
-
-def load_price_cache(path: Path) -> Optional[dict[str, Any]]:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    return data if isinstance(data, dict) else None
-
-
-def write_price_cache(path: Path, data: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    handle, temporary = tempfile.mkstemp(prefix="pricing-", suffix=".json", dir=path.parent)
-    try:
-        with os.fdopen(handle, "w", encoding="utf-8") as file:
-            json.dump(data, file, ensure_ascii=True, separators=(",", ":"))
-        os.replace(temporary, path)
-    except Exception:
-        try:
-            os.unlink(temporary)
-        except OSError:
-            pass
-        raise
-
-
-def load_pricing(offline: bool, verbose: bool) -> dict[str, Any]:
-    path = price_cache_path()
-    cached = load_price_cache(path)
-    fetched_at = float((cached or {}).get("fetched_at", 0) or 0)
-    fresh = cached is not None and time.time() - fetched_at < PRICE_CACHE_TTL_SECONDS
-    if offline or fresh:
-        verbose_log(
-            verbose,
-            f"[Pricing] {'offline' if offline else 'cache'} path={path} "
-            f"available={cached is not None}",
-        )
-        return cached or {}
-
-    try:
-        verbose_log(verbose, "[Pricing] refreshing LiteLLM and models.dev")
-        data = {
-            "fetched_at": time.time(),
-            "litellm": read_json_url(LITELLM_PRICING_URL),
-            "models_dev": read_json_url(MODELS_DEV_PRICING_URL),
-        }
-        write_price_cache(path, data)
-        verbose_log(verbose, f"[Pricing] cache updated: {path}")
-        return data
-    except (OSError, ValueError, urllib.error.URLError) as error:
-        verbose_log(verbose, f"[Pricing] refresh failed, using old cache: {error}")
-        return cached or {}
-
-
-def model_candidates(record: UsageRecord) -> list[str]:
-    model = record.model
-    if record.tool == "opencode":
-        model = {"gemini-3-pro-high": "gemini-3-pro-preview", "k2p6": "kimi-k2.6"}.get(
-            model, model
-        )
-    candidates = [model]
-    without_date = re.sub(r"-\d{8}$", "", model)
-    if without_date != model:
-        candidates.append(without_date)
-    if record.speed == "fast" and model.endswith("-fast"):
-        candidates.append(model[:-5])
-    if record.provider:
-        provider = record.provider.replace("-", "_")
-        candidates.extend(f"{provider}/{candidate}" for candidate in list(candidates))
-    return list(dict.fromkeys(candidates))
-
-
-def models_dev_price(data: dict[str, Any], candidate: str) -> Optional[dict[str, float]]:
-    if "/" not in candidate:
-        return None
-    provider_hint, model = candidate.split("/", 1)
-    provider = next(
-        (
-            value
-            for provider_id, value in data.items()
-            if provider_id.replace("-", "_") == provider_hint
-        ),
-        None,
-    )
-    if not isinstance(provider, dict):
-        return None
-    raw = (provider.get("models") or {}).get(model)
-    if not isinstance(raw, dict) or not isinstance(raw.get("cost"), dict):
-        return None
-    cost = raw["cost"]
-    return {
-        "input_cost_per_token": float(cost.get("input") or 0) / 1_000_000,
-        "output_cost_per_token": float(cost.get("output") or 0) / 1_000_000,
-        "cache_read_input_token_cost": float(cost.get("cache_read") or 0) / 1_000_000,
-        "cache_creation_input_token_cost": float(cost.get("cache_write") or 0) / 1_000_000,
-    }
-
-
-def find_price(pricing: dict[str, Any], record: UsageRecord) -> Optional[dict[str, Any]]:
-    litellm = pricing.get("litellm")
-    models_dev = pricing.get("models_dev")
-    for candidate in model_candidates(record):
-        if isinstance(litellm, dict) and isinstance(litellm.get(candidate), dict):
-            return litellm[candidate]
-    if isinstance(models_dev, dict):
-        for candidate in model_candidates(record):
-            found = models_dev_price(models_dev, candidate)
-            if found is not None:
-                return found
-    return None
-
-
-def tiered_rate(price: dict[str, Any], base: str, context_tokens: int) -> float:
-    rate = float(price.get(base) or 0)
-    for key, value in price.items():
-        match = re.fullmatch(re.escape(base) + r"_above_(\d+)k_tokens", key)
-        if match and context_tokens > int(match.group(1)) * 1000:
-            rate = float(value or rate)
-    return rate
-
-
-def calculate_cost(record: UsageRecord, pricing: dict[str, Any]) -> tuple[float, bool]:
-    if record.recorded_cost > 0:
-        return record.recorded_cost, True
-    price = find_price(pricing, record)
-    if price is None:
-        return 0.0, False
-
-    context = record.input_tokens + record.cache_creation_tokens + record.cache_read_tokens
-    cache_creation_rate = tiered_rate(price, "cache_creation_input_token_cost", context)
-    one_hour_rate = float(
-        price.get("cache_creation_input_token_cost_above_1hr") or cache_creation_rate
-    )
-    five_minute_creation = max(
-        0, record.cache_creation_tokens - record.cache_creation_1h_tokens
-    )
-    cost = (
-        record.input_tokens * tiered_rate(price, "input_cost_per_token", context)
-        + record.output_tokens * tiered_rate(price, "output_cost_per_token", context)
-        + record.cache_read_tokens * tiered_rate(
-            price, "cache_read_input_token_cost", context
-        )
-        + five_minute_creation * cache_creation_rate
-        + record.cache_creation_1h_tokens * one_hour_rate
-    )
-    if record.speed == "fast":
-        provider_specific = price.get("provider_specific_entry")
-        if isinstance(provider_specific, dict):
-            cost *= float(provider_specific.get("fast") or 1)
-    return cost, True
-
-
-def aggregate_records(
-    records: Iterable[UsageRecord],
-    pricing: dict[str, Any],
-    since: Optional[str],
-    until: Optional[str],
-) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]], dict[str, set[str]]]:
-    by_tool: dict[str, dict[str, Any]] = defaultdict(
-        lambda: {"total": 0, "cost": 0.0, "priced": True}
-    )
-    by_model: dict[str, dict[str, Any]] = defaultdict(
-        lambda: {"total": 0, "cost": 0.0, "priced": True}
-    )
-    model_to_tools: dict[str, set[str]] = defaultdict(set)
-    price_cache: dict[tuple[str, str, str, str], Optional[dict[str, Any]]] = {}
-    for record in records:
-        if not date_in_range(record.timestamp, since, until):
-            continue
-        price_key = (record.tool, record.model, record.provider, record.speed)
-        if record.recorded_cost > 0:
-            cost, priced = record.recorded_cost, True
-        else:
-            if price_key not in price_cache:
-                price_cache[price_key] = find_price(pricing, record)
-            matched_price = price_cache[price_key]
-            cost, priced = calculate_cost(
-                record,
-                {"litellm": {record.model: matched_price}} if matched_price is not None else {},
-            )
-        for bucket in (by_tool[record.tool], by_model[record.model]):
-            bucket["total"] += record.total_tokens
-            bucket["cost"] += cost
-            bucket["priced"] = bucket["priced"] and priced
-        model_to_tools[record.model].add(record.tool)
-    return dict(by_tool), dict(by_model), model_to_tools
-
-
-def human_tokens(n: int) -> str:
-    raw = f"{n:,}"
-    if n >= 100_000_000:
-        return f"{n / 100_000_000:.2f}亿({raw})"
-    if n >= 10_000_000:
-        return f"{n / 10_000_000:.2f}千万({raw})"
-    if n >= 10_000:
-        return f"{n / 10_000:.1f}万({raw})"
-    return raw
-
-
-def cost_cell(cost: float, priced: bool) -> str:
-    if not priced:
-        return "-"
-    if cost > 0:
-        return f"${cost:,.2f}"
-    return "$0.00"
-
-
-def tool_disp(tool: str) -> str:
-    return TOOL_NAMES.get(tool, tool.capitalize())
-
-
-def model_disp(model: str) -> str:
-    return re.sub(r"-\d{8}$", "", model)
-
-
-def disp_width(value: str) -> int:
-    width = 0
-    for character in value:
-        if character == "️":
-            continue
-        if unicodedata.east_asian_width(character) in ("W", "F") or character in "⚠✅📊":
-            width += 2
-        else:
-            width += 1
-    return width
-
-
-def render_table(headers: list[str], aligns: list[str], rows: list[list[str]]) -> str:
-    columns = len(headers)
-    widths = [disp_width(headers[index]) for index in range(columns)]
-    for row in rows:
-        for index in range(columns):
-            widths[index] = max(widths[index], disp_width(row[index]))
-
-    def hline(left: str, middle: str, right: str) -> str:
-        return left + middle.join("─" * (widths[i] + 2) for i in range(columns)) + right
-
-    def format_row(cells: list[str], center: bool = False) -> str:
-        output = []
-        for index in range(columns):
-            cell = cells[index]
-            padding = widths[index] - disp_width(cell)
-            if center:
-                left = padding // 2
-                rendered = " " * left + cell + " " * (padding - left)
-            elif aligns[index] == "r":
-                rendered = " " * padding + cell
-            else:
-                rendered = cell + " " * padding
-            output.append(" " + rendered + " ")
-        return "│" + "│".join(output) + "│"
-
-    lines = [
-        hline("┌", "┬", "┐"),
-        format_row(headers, center=True),
-        hline("├", "┼", "┤"),
-    ]
-    for index, row in enumerate(rows):
-        lines.append(format_row(row))
-        lines.append(
-            hline("├", "┼", "┤") if index != len(rows) - 1 else hline("└", "┴", "┘")
-        )
-    return "\n".join(lines)
-
-
-def validate_date(value: Optional[str], option: str) -> Optional[str]:
-    if value is None:
-        return None
-    try:
-        datetime.strptime(value, "%Y-%m-%d")
-    except ValueError as error:
-        raise SystemExit(f"{option} 必须是 YYYY-MM-DD: {value}") from error
-    return value
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="按工具 / 按模型汇总 coding agent token 消耗")
-    parser.add_argument("--since", help="起始日期 YYYY-MM-DD")
-    parser.add_argument("--until", help="结束日期 YYYY-MM-DD (含)")
-    parser.add_argument(
-        "--offline",
-        action="store_true",
-        help="离线模式：只用本地缓存价格，查不到则花费显示为 -",
+    parser = argparse.ArgumentParser(
+        description="Incrementally upload Claude, Codex and OpenCode token usage",
     )
     parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="输出扫描统计、跳过记录和价格缓存状态 (写到 stderr)",
+        "--base-url",
+        default=os.environ.get("TOKEN_TIDE_BASE_URL"),
+        help="TokenTide API base URL (or TOKEN_TIDE_BASE_URL)",
     )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=MAX_BATCH_SIZE,
+        help=f"events per request, 1-{MAX_BATCH_SIZE}",
+    )
+    parser.add_argument("--timeout-seconds", type=float, default=15)
+    parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
-    since = validate_date(args.since, "--since")
-    until = validate_date(args.until, "--until")
-    if since and until and since > until:
-        raise SystemExit("--since 不能晚于 --until")
+    token = os.environ.get("TOKEN_TIDE_TOKEN_USAGE_TOKEN")
+    if not args.base_url:
+        parser.error("--base-url or TOKEN_TIDE_BASE_URL is required")
+    if not token:
+        parser.error("TOKEN_TIDE_TOKEN_USAGE_TOKEN is required")
+    if not 1 <= args.batch_size <= MAX_BATCH_SIZE:
+        parser.error(f"--batch-size must be between 1 and {MAX_BATCH_SIZE}")
+    if args.timeout_seconds <= 0:
+        parser.error("--timeout-seconds must be positive")
 
-    try:
-        claude, _ = load_claude_records(args.verbose)
-        codex, _ = load_codex_records(args.verbose)
-        opencode, _ = load_opencode_records(args.verbose)
-    except RuntimeError as error:
-        raise SystemExit(str(error)) from error
-
-    pricing = load_pricing(args.offline, args.verbose)
-    by_tool, by_model, model_to_tools = aggregate_records(
-        [*claude, *codex, *opencode], pricing, since, until
-    )
-
-    tool_items = sorted(by_tool.items(), key=lambda item: item[1]["total"], reverse=True)
-    total_tokens = sum(bucket["total"] for bucket in by_tool.values())
-    total_cost = sum(bucket["cost"] for bucket in by_tool.values())
-    total_priced = all(bucket["priced"] for bucket in by_tool.values())
-    priced_cost = sum(
-        bucket["cost"] for bucket in by_tool.values() if bucket["priced"]
-    )
-    tool_rows = []
-    for tool, bucket in tool_items:
-        percentage = (
-            f"{bucket['cost'] / priced_cost * 100:.0f}%"
-            if bucket["priced"] and priced_cost
-            else ("0%" if bucket["priced"] else "-")
-        )
-        tool_rows.append(
-            [
-                tool_disp(tool),
-                human_tokens(bucket["total"]),
-                cost_cell(bucket["cost"], bucket["priced"]),
-                percentage,
-            ]
-        )
-    tool_rows.append(
-        [
-            "合计",
-            human_tokens(total_tokens),
-            cost_cell(total_cost, total_priced),
-            "100%" if total_priced else "-",
-        ]
-    )
-    print("✅ 按工具汇总 (by tool)")
-    print(
-        render_table(
-            ["工具", "总 Token", "花费 (USD)", "占比"],
-            ["l", "r", "r", "r"],
-            tool_rows,
-        )
-    )
-
-    def tool_of(models: set[str]) -> str:
-        tools: set[str] = set()
-        for model in models:
-            tools |= model_to_tools.get(model, set())
-        return "/".join(sorted(tool_disp(tool) for tool in tools)) if tools else "-"
-
-    model_items = sorted(by_model.items(), key=lambda item: item[1]["total"], reverse=True)
-    big = [
-        (model, bucket)
-        for model, bucket in model_items
-        if bucket["total"] >= SMALL_TOKEN_THRESHOLD
-    ]
-    small = [
-        (model, bucket)
-        for model, bucket in model_items
-        if bucket["total"] < SMALL_TOKEN_THRESHOLD
-    ]
-    model_rows = []
-    for model, bucket in big:
-        model_rows.append(
-            [
-                model_disp(model),
-                tool_of({model}),
-                human_tokens(bucket["total"]),
-                cost_cell(bucket["cost"], bucket["priced"]),
-            ]
-        )
-    if small:
-        shown = [model_disp(model) for model, _ in small[:3]]
-        label = "其它(" + "/".join(shown) + ("…" if len(small) > 3 else "") + ")"
-        small_tokens = sum(bucket["total"] for _, bucket in small)
-        small_cost = sum(bucket["cost"] for _, bucket in small)
-        small_priced = all(bucket["priced"] for _, bucket in small)
-        model_rows.append(
-            [
-                label,
-                tool_of({model for model, _ in small}),
-                human_tokens(small_tokens),
-                cost_cell(small_cost, small_priced),
-            ]
-        )
-    model_rows.append(
-        ["合计", "", human_tokens(total_tokens), cost_cell(total_cost, total_priced)]
-    )
-    print("✅ 按模型汇总 (by model)")
-    print(
-        render_table(
-            ["模型", "工具", "总 Token", "花费"],
-            ["l", "l", "r", "r"],
-            model_rows,
-        )
-    )
+    client = TokenTideClient(args.base_url, token, args.timeout_seconds)
+    scanners: dict[str, Callable[[dict[str, object]], ScanResult]] = {
+        "claude": scan_claude,
+        "codex": scan_codex,
+        "opencode": scan_opencode,
+    }
+    failures = []
+    for tool in TOOLS:
+        try:
+            sync_tool(
+                client,
+                tool,
+                scanners[tool],
+                args.batch_size,
+                args.verbose,
+            )
+        except (OSError, RuntimeError, sqlite3.Error) as error:
+            failures.append(tool)
+            print(f"[{tool}] {error}", file=sys.stderr)
+    if failures:
+        raise SystemExit(f"sync failed: {', '.join(failures)}")
 
 
 if __name__ == "__main__":

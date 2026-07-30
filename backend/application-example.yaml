@@ -13,6 +13,9 @@ database:
 http:
   timeout-seconds: 15
 
+token-usage:
+  auth-token: replace-with-a-long-random-token
+
 refresh:
   # 标准五段 cron；示例为每小时整点刷新。
   cron: "0 * * * *"
