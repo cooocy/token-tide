@@ -192,7 +192,7 @@ export default function ProviderHistoryPage() {
           <ProviderMark provider={provider} />
           <div>
             <p>{formatProviderName(provider)}</p>
-            <span>余额潮位</span>
+            <span>余额历史</span>
           </div>
         </div>
       </header>
@@ -285,10 +285,10 @@ export default function ProviderHistoryPage() {
           <section className={`chart-panel ${loading ? 'is-loading' : ''}`}>
             <div className="section-heading">
               <div>
-                <p className="section-kicker">BALANCE TRACE</p>
-                <h1>余额潮位</h1>
+                <p className="section-kicker">BALANCE TREND</p>
+                <h1>余额趋势</h1>
               </div>
-              <span>最近 {events.length} 个事件</span>
+              <span>最近 {events.length} 条记录</span>
             </div>
             <BalanceTrendChart
               key={selectedCurrency}
@@ -300,7 +300,7 @@ export default function ProviderHistoryPage() {
           <section className="history-records" aria-labelledby="records-title">
             <div className="section-heading">
               <div>
-                <p className="section-kicker">LOGBOOK</p>
+                <p className="section-kicker">BALANCE HISTORY</p>
                 <h2 id="records-title">余额变动</h2>
               </div>
               <span>{selectedCurrency}</span>

@@ -73,7 +73,8 @@ a {
 
 button:focus-visible,
 a:focus-visible,
-summary:focus-visible {
+summary:focus-visible,
+.usage-tide-plot:focus-visible {
   outline: 2px solid var(--current);
   outline-offset: 3px;
 }
@@ -100,7 +101,7 @@ svg {
     calc(22px + env(safe-area-inset-bottom));
 }
 
-.dashboard-header,
+.product-header,
 .history-header {
   display: flex;
   min-height: 48px;
@@ -174,27 +175,6 @@ svg {
   margin-top: 2px;
   color: var(--muted);
   font-size: 0.75rem;
-}
-
-.health-summary {
-  display: inline-flex;
-  min-height: 34px;
-  align-items: center;
-  gap: 7px;
-  padding: 0 11px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--mist);
-  font-family: var(--data-font);
-  font-size: 0.7rem;
-}
-
-.health-pulse {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--current);
-  box-shadow: 0 0 0 4px rgba(50, 214, 197, 0.1);
 }
 
 .product-navigation {
@@ -1119,57 +1099,19 @@ svg {
 /* Token usage */
 
 .dashboard-page .overview-heading {
-  padding-top: 38px;
+  padding: 28px 0 24px;
 }
 
 .usage-page {
   width: min(100% - 32px, 900px);
 }
 
-.usage-header {
-  padding-bottom: 0;
-}
-
-.usage-header-title {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 10px;
-}
-
-.usage-header-title .brand-mark {
-  width: 36px;
-  height: 36px;
-}
-
-.usage-header-title .brand-mark img {
-  width: 26px;
-  height: 26px;
-}
-
-.usage-header-title p,
-.usage-header-title span {
-  margin: 0;
-}
-
-.usage-header-title p {
-  color: var(--foam);
-  font-family: var(--display-font);
-  font-size: 0.94rem;
-  font-weight: 650;
-}
-
-.usage-header-title > div > span {
-  display: block;
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 0.7rem;
-}
-
 .usage-filter-panel {
   display: grid;
   gap: 9px;
-  padding: 24px 0 4px;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
 }
 
 .usage-filter-row {
@@ -1192,7 +1134,7 @@ svg {
 
 .usage-segments button {
   min-width: 58px;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 13px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -1211,12 +1153,14 @@ svg {
 }
 
 .usage-segments.is-scrollable {
-  overflow-x: auto;
-  scrollbar-width: none;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.usage-segments.is-scrollable::-webkit-scrollbar {
-  display: none;
+.usage-segments.is-scrollable button {
+  min-width: 0;
+  padding-right: 6px;
+  padding-left: 6px;
 }
 
 .usage-message {
@@ -1227,7 +1171,7 @@ svg {
   position: relative;
   display: grid;
   gap: 16px;
-  margin-top: 44px;
+  margin-top: 18px;
   overflow: hidden;
 }
 
@@ -1240,7 +1184,7 @@ svg {
 }
 
 .usage-hero {
-  padding: 40px 0 30px;
+  padding: 30px 0 24px;
 }
 
 .usage-hero-heading {
@@ -1256,6 +1200,16 @@ svg {
   margin: 0;
 }
 
+.usage-hero-heading h1 {
+  margin: 7px 0 0;
+  color: var(--foam);
+  font-family: var(--display-font);
+  font-size: clamp(2rem, 10vw, 3.4rem);
+  font-weight: 500;
+  letter-spacing: -0.05em;
+  line-height: 1;
+}
+
 .usage-hero-heading > span {
   color: var(--muted);
   font-family: var(--data-font);
@@ -1263,9 +1217,12 @@ svg {
   white-space: nowrap;
 }
 
-.usage-hero > strong {
+.usage-total {
+  margin-top: 28px;
+}
+
+.usage-total strong {
   display: block;
-  margin-top: 14px;
   overflow: hidden;
   color: var(--foam);
   font-family: var(--display-font);
@@ -1278,20 +1235,24 @@ svg {
   white-space: nowrap;
 }
 
-.usage-unit {
-  margin-top: 13px !important;
-  color: var(--current);
+.usage-total p {
+  margin: 10px 0 0;
+  color: var(--muted);
   font-family: var(--data-font);
-  font-size: 0.58rem;
-  font-weight: 650;
-  letter-spacing: 0.14em;
+  font-size: 0.64rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.usage-token-breakdown {
+  margin-bottom: 28px;
 }
 
 .usage-token-details {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 1px;
-  margin: 25px 0 0;
+  margin: 16px 0 0;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 15px;
@@ -1302,6 +1263,15 @@ svg {
   min-width: 0;
   padding: 14px 12px;
   background: var(--panel);
+}
+
+.usage-token-details > div.is-primary {
+  grid-column: span 3;
+  padding: 16px 14px;
+}
+
+.usage-token-details > div.is-secondary {
+  grid-column: span 2;
 }
 
 .usage-token-details dt {
@@ -1320,6 +1290,11 @@ svg {
   font-variant-numeric: tabular-nums;
   font-weight: 650;
   white-space: nowrap;
+}
+
+.usage-token-details .is-primary dd {
+  color: var(--foam);
+  font-size: 0.88rem;
 }
 
 .usage-empty {
@@ -1406,6 +1381,9 @@ svg {
   gap: clamp(2px, 1.1vw, 7px);
   padding: 0 4px 25px;
   border-bottom: 1px solid rgba(168, 207, 203, 0.14);
+  cursor: crosshair;
+  touch-action: pan-y;
+  user-select: none;
 }
 
 .usage-tide-plot::before,
@@ -1436,7 +1414,6 @@ svg {
   align-items: stretch;
   padding: 0;
   background: transparent;
-  cursor: pointer;
 }
 
 .usage-day-track {
@@ -1604,14 +1581,6 @@ svg {
 }
 
 @media (max-width: 520px) {
-  .usage-token-details {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .usage-token-details > div:nth-child(n + 4) {
-    border-top: 1px solid var(--line);
-  }
-
   .usage-hero-heading {
     align-items: center;
   }

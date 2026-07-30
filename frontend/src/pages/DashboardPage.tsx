@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { findBalances, type ProviderBalance, type ProviderStatus } from '@/api/balance';
 import ProductNavigation from '@/components/ProductNavigation';
+import ProductHeader from '@/components/ProductHeader';
 import ProviderMark from '@/components/ProviderMark';
 import {
   formatAmount,
@@ -15,7 +16,7 @@ interface StatusMeta {
 }
 
 const STATUS_META: Record<ProviderStatus, StatusMeta> = {
-  SUCCESS: { className: 'is-success', label: '运行正常' },
+  SUCCESS: { className: 'is-success', label: '更新成功' },
   RUNNING: { className: 'is-running', label: '正在更新' },
   FAILED: { className: 'is-failed', label: '更新失败' },
   NEVER_REFRESHED: { className: 'is-idle', label: '等待首次更新' },
@@ -54,34 +55,9 @@ export default function DashboardPage() {
     void loadBalances();
   }, [loadBalances]);
 
-  const summary = useMemo(() => {
-    const items = providers ?? [];
-    const healthyCount = items.filter((provider) => provider.status === 'SUCCESS').length;
-    return { healthyCount, total: items.length };
-  }, [providers]);
-
   return (
     <main className="app-shell dashboard-page" aria-busy={loading}>
-      <header className="dashboard-header">
-        <div className="brand-lockup">
-          <span className="brand-mark" aria-hidden="true">
-            <img src="/favicon.svg" alt="" />
-          </span>
-          <div>
-            <p className="brand-name">TokenTide</p>
-            <p className="brand-caption">多平台余额监控</p>
-          </div>
-        </div>
-        {providers && providers.length > 0 && (
-          <div
-            className="health-summary"
-            aria-label={`${summary.healthyCount} 个平台运行正常，共 ${summary.total} 个平台`}
-          >
-            <span className="health-pulse" aria-hidden="true" />
-            {summary.healthyCount} / {summary.total}
-          </div>
-        )}
-      </header>
+      <ProductHeader />
 
       <ProductNavigation />
 
@@ -177,9 +153,9 @@ export default function DashboardPage() {
                     <Link
                       className="history-link"
                       to={historyUrl}
-                      aria-label={`查看 ${formatProviderName(provider.provider)} 余额潮位`}
+                      aria-label={`查看 ${formatProviderName(provider.provider)} 余额历史`}
                     >
-                      <span>余额潮位</span>
+                      <span>余额历史</span>
                       <ArrowIcon />
                     </Link>
                   </div>

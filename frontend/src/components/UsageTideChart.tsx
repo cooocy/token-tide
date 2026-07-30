@@ -1,4 +1,10 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import {
+  useEffect,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type PointerEvent,
+} from 'react';
 import {
   type TokenUsageDay,
   type TokenUsageTool,
@@ -32,7 +38,56 @@ export default function UsageTideChart({ days }: UsageTideChartProps) {
   }, [days]);
 
   const selected = days.find((day) => day.date === selectedDate) ?? days.at(-1);
+  const selectedIndex = Math.max(
+    0,
+    days.findIndex((day) => day.date === selected?.date),
+  );
   const maximum = Math.max(...days.map((day) => day.total_tokens), 1);
+
+  const selectNearestDate = (event: PointerEvent<HTMLDivElement>): void => {
+    if (days.length === 0) {
+      return;
+    }
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const ratio = Math.min(
+      1,
+      Math.max(0, (event.clientX - bounds.left) / bounds.width),
+    );
+    const index = Math.min(days.length - 1, Math.floor(ratio * days.length));
+    setSelectedDate(days[index].date);
+  };
+
+  const handlePointerDown = (event: PointerEvent<HTMLDivElement>): void => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    selectNearestDate(event);
+  };
+
+  const handlePointerMove = (event: PointerEvent<HTMLDivElement>): void => {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+      return;
+    }
+    selectNearestDate(event);
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (days.length === 0) {
+      return;
+    }
+    let nextIndex = selectedIndex;
+    if (event.key === 'ArrowLeft') {
+      nextIndex = Math.max(0, selectedIndex - 1);
+    } else if (event.key === 'ArrowRight') {
+      nextIndex = Math.min(days.length - 1, selectedIndex + 1);
+    } else if (event.key === 'Home') {
+      nextIndex = 0;
+    } else if (event.key === 'End') {
+      nextIndex = days.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    setSelectedDate(days[nextIndex].date);
+  };
 
   return (
     <div className="usage-tide-chart">
@@ -66,6 +121,21 @@ export default function UsageTideChart({ days }: UsageTideChartProps) {
 
       <div
         className="usage-tide-plot"
+        role="slider"
+        tabIndex={days.length > 0 ? 0 : -1}
+        aria-label="选择每日用量"
+        aria-orientation="horizontal"
+        aria-valuemin={0}
+        aria-valuemax={Math.max(0, days.length - 1)}
+        aria-valuenow={selectedIndex}
+        aria-valuetext={
+          selected
+            ? `${selected.date}，${formatTokenCount(selected.total_tokens)} Tokens`
+            : '没有用量数据'
+        }
+        onKeyDown={handleKeyDown}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
         style={{ '--usage-day-count': days.length } as CSSProperties}
       >
         {days.map((day, index) => {
@@ -77,12 +147,9 @@ export default function UsageTideChart({ days }: UsageTideChartProps) {
             index === 0 || index === days.length - 1 || isSelected;
 
           return (
-            <button
-              type="button"
+            <span
               className={isSelected ? 'usage-day is-selected' : 'usage-day'}
-              aria-label={`${day.date}，${formatTokenCount(day.total_tokens)} Token`}
-              aria-pressed={isSelected}
-              onClick={() => setSelectedDate(day.date)}
+              aria-hidden="true"
               key={day.date}
             >
               <span className="usage-day-track">
@@ -108,7 +175,7 @@ export default function UsageTideChart({ days }: UsageTideChartProps) {
               <span className={showLabel ? 'usage-day-label' : 'usage-day-label is-hidden'}>
                 {formatDay(day.date)}
               </span>
-            </button>
+            </span>
           );
         })}
       </div>

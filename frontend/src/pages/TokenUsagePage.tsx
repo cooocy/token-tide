@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import {
   findTokenUsageSummary,
   type TokenUsageSummary,
   type TokenUsageTool,
 } from '@/api/tokenUsage';
 import ProductNavigation from '@/components/ProductNavigation';
+import ProductHeader from '@/components/ProductHeader';
 import UsageTideChart from '@/components/UsageTideChart';
 import {
   formatCompactTokenCount,
@@ -27,11 +28,11 @@ const TOOLS: { value: ToolFilter; label: string }[] = [
   { value: 'opencode', label: 'OpenCode' },
 ];
 const TOKEN_DETAILS = [
-  { field: 'input_tokens', label: '输入' },
-  { field: 'output_tokens', label: '输出' },
-  { field: 'cache_creation_tokens', label: '缓存写入' },
-  { field: 'cache_read_tokens', label: '缓存读取' },
-  { field: 'reasoning_tokens', label: '推理' },
+  { field: 'input_tokens', label: '输入', prominence: 'primary' },
+  { field: 'output_tokens', label: '输出', prominence: 'primary' },
+  { field: 'cache_creation_tokens', label: '缓存写入', prominence: 'secondary' },
+  { field: 'cache_read_tokens', label: '缓存读取', prominence: 'secondary' },
+  { field: 'reasoning_tokens', label: '推理', prominence: 'secondary' },
 ] as const;
 
 function isPeriod(value: string | null): value is UsagePeriod {
@@ -57,14 +58,6 @@ function queryRange(period: UsagePeriod): {
     endTime: now.toISOString(),
     timezoneOffsetMinutes: -now.getTimezoneOffset(),
   };
-}
-
-function BackIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="m15 18-6-6 6-6" />
-    </svg>
-  );
 }
 
 export default function TokenUsagePage() {
@@ -118,54 +111,64 @@ export default function TokenUsagePage() {
 
   return (
     <main className="app-shell usage-page" aria-busy={loading}>
-      <header className="history-header usage-header">
-        <Link className="back-link" to="/" aria-label="返回余额看板">
-          <BackIcon />
-        </Link>
-        <div className="usage-header-title">
-          <span className="brand-mark" aria-hidden="true">
-            <img src="/favicon.svg" alt="" />
-          </span>
-          <div>
-            <p>TokenUsage</p>
-            <span>Token 用量</span>
-          </div>
-        </div>
-      </header>
+      <ProductHeader />
 
       <ProductNavigation />
 
-      <section className="usage-filter-panel" aria-label="使用量筛选">
-        <div className="usage-filter-row">
-          <span>时间</span>
-          <div className="usage-segments">
-            {PERIODS.map((item) => (
-              <button
-                type="button"
-                className={item.value === period ? 'is-active' : ''}
-                aria-pressed={item.value === period}
-                onClick={() => updateFilter(item.value)}
-                key={item.value}
-              >
-                {item.label}
-              </button>
-            ))}
+      <section className="usage-hero" aria-labelledby="usage-title">
+        <div className="usage-hero-heading">
+          <div>
+            <p className="section-kicker">TOKEN USAGE</p>
+            <h1 id="usage-title">Token 用量</h1>
           </div>
+          {summary && (
+            <span>{formatTokenCount(summary.totals.event_count)} 次请求</span>
+          )}
         </div>
-        <div className="usage-filter-row">
-          <span>工具</span>
-          <div className="usage-segments is-scrollable">
-            {TOOLS.map((item) => (
-              <button
-                type="button"
-                className={item.value === tool ? 'is-active' : ''}
-                aria-pressed={item.value === tool}
-                onClick={() => updateFilter(period, item.value)}
-                key={item.value}
-              >
-                {item.label}
-              </button>
-            ))}
+
+        {summary && (
+          <div className="usage-total">
+            <strong
+              aria-label={`${formatTokenCount(summary.totals.total_tokens)} Tokens`}
+            >
+              {formatCompactTokenCount(summary.totals.total_tokens)}
+            </strong>
+            <p>{formatTokenCount(summary.totals.total_tokens)} Tokens</p>
+          </div>
+        )}
+
+        <div className="usage-filter-panel" aria-label="使用量筛选">
+          <div className="usage-filter-row">
+            <span>时间</span>
+            <div className="usage-segments">
+              {PERIODS.map((item) => (
+                <button
+                  type="button"
+                  className={item.value === period ? 'is-active' : ''}
+                  aria-pressed={item.value === period}
+                  onClick={() => updateFilter(item.value)}
+                  key={item.value}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="usage-filter-row">
+            <span>工具</span>
+            <div className="usage-segments is-scrollable">
+              {TOOLS.map((item) => (
+                <button
+                  type="button"
+                  className={item.value === tool ? 'is-active' : ''}
+                  aria-pressed={item.value === tool}
+                  onClick={() => updateFilter(period, item.value)}
+                  key={item.value}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -195,23 +198,19 @@ export default function TokenUsagePage() {
 
       {summary && (
         <>
-          <section className="usage-hero" aria-labelledby="usage-total-title">
-            <div className="usage-hero-heading">
+          <section
+            className="usage-token-breakdown"
+            aria-labelledby="usage-breakdown-title"
+          >
+            <div className="section-heading">
               <div>
-                <p className="section-kicker" id="usage-total-title">TOTAL</p>
+                <p className="section-kicker">TOKEN BREAKDOWN</p>
+                <h2 id="usage-breakdown-title">Token 分布</h2>
               </div>
-              <span>{formatTokenCount(summary.totals.event_count)} 次请求</span>
             </div>
-            <strong
-              aria-label={`${formatTokenCount(summary.totals.total_tokens)} Tokens`}
-              title={`${formatTokenCount(summary.totals.total_tokens)} Tokens`}
-            >
-              {formatCompactTokenCount(summary.totals.total_tokens)}
-            </strong>
-            <p className="usage-unit">TOKENS 分布</p>
             <dl className="usage-token-details">
               {TOKEN_DETAILS.map((item) => (
-                <div key={item.field}>
+                <div className={`is-${item.prominence}`} key={item.field}>
                   <dt>{item.label}</dt>
                   <dd
                     aria-label={`${formatTokenCount(summary.totals[item.field])} Tokens`}
@@ -235,8 +234,8 @@ export default function TokenUsagePage() {
               <section className="usage-panel usage-tide-panel">
                 <div className="section-heading">
                   <div>
-                    <p className="section-kicker">DAILY TOKEN</p>
-                    <h1>用量潮线</h1>
+                    <p className="section-kicker">DAILY USAGE</p>
+                    <h2>每日用量</h2>
                   </div>
                 </div>
                 <UsageTideChart days={summary.timeline} />
