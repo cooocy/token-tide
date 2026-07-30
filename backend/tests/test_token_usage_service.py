@@ -128,6 +128,75 @@ def test_batch_rejects_more_than_500_events() -> None:
         )
 
 
+def test_totals_aggregate_all_history_and_token_fields(
+    service: tuple[TokenUsageService, sessionmaker[Session]],
+) -> None:
+    usage_service, _ = service
+    usage_service.ingest(
+        TokenUsageTool.CODEX,
+        TokenUsageBatchInput(
+            events=[
+                event(
+                    source_event_id="b" * 64,
+                    input_tokens=70,
+                    output_tokens=30,
+                    cache_creation_tokens=10,
+                    total_tokens=120,
+                )
+            ],
+            next_cursor={"version": 1},
+        ),
+    )
+    usage_service.ingest(
+        TokenUsageTool.CLAUDE,
+        TokenUsageBatchInput(
+            events=[
+                event(
+                    source_event_id="c" * 64,
+                    input_tokens=25,
+                    output_tokens=15,
+                    cache_read_tokens=5,
+                    reasoning_tokens=3,
+                    total_tokens=50,
+                )
+            ],
+            next_cursor={"version": 1},
+        ),
+    )
+
+    totals = usage_service.totals(None)
+
+    assert totals.event_count == 2
+    assert totals.input_tokens == 95
+    assert totals.output_tokens == 45
+    assert totals.cache_creation_tokens == 10
+    assert totals.cache_read_tokens == 5
+    assert totals.reasoning_tokens == 3
+    assert totals.total_tokens == 170
+
+
+def test_totals_filter_tool_and_return_zero_for_empty_result(
+    service: tuple[TokenUsageService, sessionmaker[Session]],
+) -> None:
+    usage_service, _ = service
+    assert usage_service.totals(None).model_dump() == {
+        "event_count": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_tokens": 0,
+        "cache_read_tokens": 0,
+        "reasoning_tokens": 0,
+        "total_tokens": 0,
+    }
+    usage_service.ingest(
+        TokenUsageTool.CODEX,
+        TokenUsageBatchInput(events=[event()], next_cursor={"version": 1}),
+    )
+
+    assert usage_service.totals(TokenUsageTool.CODEX).total_tokens == 15
+    assert usage_service.totals(TokenUsageTool.CLAUDE).total_tokens == 0
+
+
 def test_summary_aggregates_tools_models_and_local_calendar_days(
     service: tuple[TokenUsageService, sessionmaker[Session]],
 ) -> None:

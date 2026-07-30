@@ -165,6 +165,7 @@ GET  /balances/{provider}/history
 POST /refresh
 POST /refresh/{provider}
 GET  /token-usage/summary
+GET  /token-usage/totals
 GET  /token-usage/{tool}/checkpoint
 POST /token-usage/{tool}/events/batch
 ```
@@ -191,6 +192,10 @@ timezone-offset-minutes    # 必填，本地时间相对 UTC 的分钟偏移
 日历日聚合的连续趋势，以及模型用量排行。`total_tokens` 是独立统计字段，输入、输出、
 缓存和推理 Token 仅作明细展示，不保证相加后等于总量。汇总接口不返回原始事件；
 checkpoint 与批量上报接口仍要求 Token Usage Bearer Token。
+
+Token Usage 总计接口同样公开读取，仅接受可选的 `tool` 参数。它使用数据库聚合统计
+全部历史事件，返回累计请求数、`total_tokens` 和各 Token 类型明细，不返回每日趋势
+或模型排行，也不受 31 天查询跨度限制。
 
 金额在写入数据库前按四舍五入保留 2 位小数，接口统一以固定 2 位的十进制字符串返回。
 `GET /balances` 的当前余额来自每个平台、币种最新的 `balance_snapshot`。
@@ -248,8 +253,8 @@ OPENCODE_DATA_DIR
 ## 前端
 
 前端提供余额看板、余额历史和 Token 用量查看页。使用量页默认查看最近 7 天，
-可切换今天、30 天以及 Claude、Codex、OpenCode 单个工具；每日趋势按浏览器本地
-日界线聚合。
+可切换今天、30 天、全部历史总计以及 Claude、Codex、OpenCode 单个工具；区间模式的
+每日趋势按浏览器本地日界线聚合，总计模式只显示累计 Token、请求数和 Token 分布。
 
 ```bash
 cd frontend

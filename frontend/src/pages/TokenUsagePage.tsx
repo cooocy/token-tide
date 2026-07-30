@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   findTokenUsageSummary,
+  findTokenUsageTotals,
   type TokenUsageSummary,
   type TokenUsageTool,
+  type TokenUsageTotals,
 } from '@/api/tokenUsage';
 import ProductNavigation from '@/components/ProductNavigation';
 import ProductHeader from '@/components/ProductHeader';
@@ -13,14 +15,21 @@ import {
   formatTokenCount,
 } from '@/lib/display';
 
-type UsagePeriod = 'today' | '7d' | '30d';
+type UsagePeriod = 'today' | '7d' | '30d' | 'total';
+type RangedUsagePeriod = Exclude<UsagePeriod, 'total'>;
 type ToolFilter = 'all' | TokenUsageTool;
 
-const PERIODS: { value: UsagePeriod; label: string; days: number }[] = [
-  { value: 'today', label: '今天', days: 1 },
-  { value: '7d', label: '7 天', days: 7 },
-  { value: '30d', label: '30 天', days: 30 },
+const PERIODS: { value: UsagePeriod; label: string }[] = [
+  { value: 'today', label: '今天' },
+  { value: '7d', label: '7 天' },
+  { value: '30d', label: '30 天' },
+  { value: 'total', label: '总计' },
 ];
+const PERIOD_DAYS: Record<RangedUsagePeriod, number> = {
+  today: 1,
+  '7d': 7,
+  '30d': 30,
+};
 const TOOLS: { value: ToolFilter; label: string }[] = [
   { value: 'all', label: '全部' },
   { value: 'claude', label: 'Claude' },
@@ -43,13 +52,13 @@ function isTool(value: string | null): value is ToolFilter {
   return TOOLS.some((tool) => tool.value === value);
 }
 
-function queryRange(period: UsagePeriod): {
+function queryRange(period: RangedUsagePeriod): {
   startTime: string;
   endTime: string;
   timezoneOffsetMinutes: number;
 } {
   const now = new Date();
-  const days = PERIODS.find((item) => item.value === period)?.days ?? 7;
+  const days = PERIOD_DAYS[period];
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
   start.setDate(start.getDate() - (days - 1));
@@ -69,41 +78,76 @@ export default function TokenUsagePage() {
     ? searchParams.get('tool') as ToolFilter
     : 'all';
   const [summary, setSummary] = useState<TokenUsageSummary | null>(null);
+  const [historicalTotals, setHistoricalTotals] =
+    useState<TokenUsageTotals | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const requestId = useRef(0);
 
-  const loadSummary = useCallback(async (): Promise<void> => {
+  const loadUsage = useCallback(async (): Promise<void> => {
+    const currentRequestId = requestId.current + 1;
+    requestId.current = currentRequestId;
     setLoading(true);
     setError(null);
     setSummary(null);
+    setHistoricalTotals(null);
     try {
-      const range = queryRange(period);
-      setSummary(
-        await findTokenUsageSummary({
+      const selectedTool = tool === 'all' ? undefined : tool;
+      if (period === 'total') {
+        const data = await findTokenUsageTotals({
+          tool: selectedTool,
+        });
+        if (requestId.current === currentRequestId) {
+          setHistoricalTotals(data);
+        }
+      } else {
+        const range = queryRange(period);
+        const data = await findTokenUsageSummary({
           ...range,
-          tool: tool === 'all' ? undefined : tool,
-        }),
-      );
+          tool: selectedTool,
+        });
+        if (requestId.current === currentRequestId) {
+          setSummary(data);
+        }
+      }
     } catch (loadError) {
-      setSummary(null);
-      setError(loadError instanceof Error ? loadError.message : '使用量加载失败');
+      if (requestId.current === currentRequestId) {
+        setSummary(null);
+        setHistoricalTotals(null);
+        setError(
+          loadError instanceof Error ? loadError.message : '使用量加载失败',
+        );
+      }
     } finally {
-      setLoading(false);
+      if (requestId.current === currentRequestId) {
+        setLoading(false);
+      }
     }
   }, [period, tool]);
 
   useEffect(() => {
-    void loadSummary();
-  }, [loadSummary, reloadKey]);
+    void loadUsage();
+    return () => {
+      requestId.current += 1;
+    };
+  }, [loadUsage, reloadKey]);
 
   const updateFilter = (
     nextPeriod: UsagePeriod = period,
     nextTool: ToolFilter = tool,
   ): void => {
+    if (nextPeriod === period && nextTool === tool) {
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setSummary(null);
+    setHistoricalTotals(null);
     setSearchParams({ period: nextPeriod, tool: nextTool });
   };
 
+  const totals = period === 'total' ? historicalTotals : summary?.totals;
   const largestModelTotal = Math.max(
     ...(summary?.models.map((model) => model.total_tokens) ?? []),
     1,
@@ -121,26 +165,26 @@ export default function TokenUsagePage() {
             <p className="section-kicker">TOKEN USAGE</p>
             <h1 id="usage-title">Token 用量</h1>
           </div>
-          {summary && (
-            <span>{formatTokenCount(summary.totals.event_count)} 次请求</span>
+          {totals && (
+            <span>{formatTokenCount(totals.event_count)} 次请求</span>
           )}
         </div>
 
-        {summary && (
+        {totals && (
           <div className="usage-total">
             <strong
-              aria-label={`${formatTokenCount(summary.totals.total_tokens)} Tokens`}
+              aria-label={`${formatTokenCount(totals.total_tokens)} Tokens`}
             >
-              {formatCompactTokenCount(summary.totals.total_tokens)}
+              {formatCompactTokenCount(totals.total_tokens)}
             </strong>
-            <p>{formatTokenCount(summary.totals.total_tokens)} Tokens</p>
+            <p>{formatTokenCount(totals.total_tokens)} Tokens</p>
           </div>
         )}
 
         <div className="usage-filter-panel" aria-label="使用量筛选">
           <div className="usage-filter-row">
             <span>时间</span>
-            <div className="usage-segments">
+            <div className="usage-segments is-grid is-periods">
               {PERIODS.map((item) => (
                 <button
                   type="button"
@@ -156,7 +200,7 @@ export default function TokenUsagePage() {
           </div>
           <div className="usage-filter-row">
             <span>工具</span>
-            <div className="usage-segments is-scrollable">
+            <div className="usage-segments is-grid">
               {TOOLS.map((item) => (
                 <button
                   type="button"
@@ -188,7 +232,7 @@ export default function TokenUsagePage() {
         )}
       </div>
 
-      {loading && !summary && (
+      {loading && !totals && (
         <section className="usage-skeleton" aria-label="正在读取使用量">
           <span className="skeleton-line is-short" />
           <span className="skeleton-line is-hero" />
@@ -196,7 +240,7 @@ export default function TokenUsagePage() {
         </section>
       )}
 
-      {summary && (
+      {totals && (
         <>
           <section
             className="usage-token-breakdown"
@@ -213,23 +257,31 @@ export default function TokenUsagePage() {
                 <div className={`is-${item.prominence}`} key={item.field}>
                   <dt>{item.label}</dt>
                   <dd
-                    aria-label={`${formatTokenCount(summary.totals[item.field])} Tokens`}
-                    title={formatTokenCount(summary.totals[item.field])}
+                    aria-label={`${formatTokenCount(totals[item.field])} Tokens`}
+                    title={formatTokenCount(totals[item.field])}
                   >
-                    {formatCompactTokenCount(summary.totals[item.field])}
+                    {formatCompactTokenCount(totals[item.field])}
                   </dd>
                 </div>
               ))}
             </dl>
           </section>
 
-          {summary.totals.event_count === 0 ? (
+          {totals.event_count === 0 ? (
             <section className="empty-panel usage-empty">
               <span className="empty-symbol" aria-hidden="true">∿</span>
-              <h2>这个时段还没有使用量</h2>
-              <p>切换时间或工具后再看看，采集器上报的数据会显示在这里。</p>
+              <h2>
+                {period === 'total'
+                  ? '还没有累计用量'
+                  : '这个时段还没有使用量'}
+              </h2>
+              <p>
+                {period === 'total'
+                  ? '采集器上报的数据会累计显示在这里。'
+                  : '切换时间或工具后再看看，采集器上报的数据会显示在这里。'}
+              </p>
             </section>
-          ) : (
+          ) : summary ? (
             <div className="usage-analysis-grid">
               <section className="usage-panel usage-tide-panel">
                 <div className="section-heading">
@@ -285,7 +337,7 @@ export default function TokenUsagePage() {
                 </ol>
               </section>
             </div>
-          )}
+          ) : null}
         </>
       )}
     </main>

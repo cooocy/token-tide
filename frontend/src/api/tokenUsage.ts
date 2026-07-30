@@ -45,6 +45,10 @@ export interface TokenUsageSummaryQuery {
   tool?: TokenUsageTool;
 }
 
+export interface TokenUsageTotalsQuery {
+  tool?: TokenUsageTool;
+}
+
 export function findTokenUsageSummary(
   query: TokenUsageSummaryQuery,
 ): Promise<TokenUsageSummary> {
@@ -54,6 +58,16 @@ export function findTokenUsageSummary(
       'start-time': query.startTime,
       'end-time': query.endTime,
       'timezone-offset-minutes': query.timezoneOffsetMinutes,
+    },
+  });
+}
+
+export function findTokenUsageTotals(
+  query: TokenUsageTotalsQuery = {},
+): Promise<TokenUsageTotals> {
+  return client.get<unknown, TokenUsageTotals>('/token-usage/totals', {
+    params: {
+      tool: query.tool,
     },
   });
 }

@@ -14,6 +14,7 @@ from token_tide.token_usage.schemas import (
     TokenUsageBatchResult,
     TokenUsageCheckpointValue,
     TokenUsageSummary,
+    TokenUsageTotals,
 )
 from token_tide.token_usage.service import TokenUsageService
 
@@ -44,6 +45,17 @@ def find_summary(
             timezone_offset_minutes=timezone_offset_minutes,
         )
     )
+
+
+@router.get(
+    "/totals",
+    response_model=R[TokenUsageTotals],
+)
+def find_totals(
+    service: Service,
+    tool: TokenUsageTool | None = None,
+) -> R[TokenUsageTotals]:
+    return ok(service.totals(tool))
 
 
 @router.get(

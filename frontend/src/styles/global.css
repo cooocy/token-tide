@@ -1152,15 +1152,21 @@ svg {
   background: rgba(50, 214, 197, 0.08);
 }
 
-.usage-segments.is-scrollable {
+.usage-segments.is-grid {
   display: grid;
+  width: 100%;
+  max-width: 420px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.usage-segments.is-scrollable button {
+.usage-segments.is-grid.is-periods {
+  max-width: 300px;
+}
+
+.usage-segments.is-grid button {
   min-width: 0;
-  padding-right: 6px;
-  padding-left: 6px;
+  padding-right: 3px;
+  padding-left: 3px;
 }
 
 .usage-message {

@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from token_tide.response import ApplicationError
@@ -68,6 +68,32 @@ class TokenUsageService:
                 cursor=checkpoint.cursor,
                 updated_at=checkpoint.updated_at,
             )
+
+    def totals(self, tool: TokenUsageTool | None) -> TokenUsageTotals:
+        statement = select(
+            func.count(TokenUsageEventModel.id).label("event_count"),
+            *[
+                func.coalesce(
+                    func.sum(getattr(TokenUsageEventModel, field)),
+                    0,
+                ).label(field)
+                for field in TOKEN_FIELDS
+            ],
+        )
+        if tool is not None:
+            statement = statement.where(TokenUsageEventModel.tool == tool.value)
+
+        with self.session_factory() as session:
+            row = session.execute(statement).one()
+        values = row._mapping
+
+        return TokenUsageTotals(
+            event_count=int(values["event_count"]),
+            **{
+                field: int(values[field])
+                for field in TOKEN_FIELDS
+            },
+        )
 
     def summary(
         self,

@@ -63,10 +63,12 @@ def test_business_routes_do_not_include_reverse_proxy_prefix() -> None:
     }
     assert set(token_usage_routes) == {
         "/token-usage/summary",
+        "/token-usage/totals",
         "/token-usage/{tool}/checkpoint",
         "/token-usage/{tool}/events/batch",
     }
     assert token_usage_routes["/token-usage/summary"].dependencies == []
+    assert token_usage_routes["/token-usage/totals"].dependencies == []
     assert len(
         token_usage_routes["/token-usage/{tool}/checkpoint"].dependencies
     ) == 1
