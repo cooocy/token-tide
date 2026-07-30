@@ -5,9 +5,7 @@ import pytest
 
 from token_tide.token_usage.domain import (
     TokenUsageCheckpoint,
-    TokenUsageCollector,
     TokenUsageEvent,
-    TokenUsageStream,
     TokenUsageTool,
 )
 
@@ -21,45 +19,53 @@ def test_token_usage_tool_values_match_local_collectors() -> None:
 
 
 def test_token_usage_domain_types_are_immutable() -> None:
-    collector = TokenUsageCollector(id="collector-1", name="MacBook")
-    stream = TokenUsageStream(
-        collector_id=collector.id,
-        tool=TokenUsageTool.CODEX,
-        stream_id="session-1",
-    )
     checkpoint = TokenUsageCheckpoint(
-        stream=stream,
+        tool=TokenUsageTool.CODEX,
         cursor={"offset": 10},
-        revision=1,
     )
 
     with pytest.raises(FrozenInstanceError):
-        checkpoint.revision = 2  # type: ignore[misc]
+        checkpoint.tool = TokenUsageTool.CLAUDE  # type: ignore[misc]
+
+
+def test_token_usage_checkpoints_keep_independent_tool_cursors() -> None:
+    claude_checkpoint = TokenUsageCheckpoint(
+        tool=TokenUsageTool.CLAUDE,
+        cursor={"file": "claude.jsonl", "offset": 10},
+    )
+    codex_checkpoint = TokenUsageCheckpoint(
+        tool=TokenUsageTool.CODEX,
+        cursor={"file": "codex.jsonl", "offset": 20},
+    )
+
+    assert claude_checkpoint.cursor["offset"] == 10
+    assert codex_checkpoint.cursor["offset"] == 20
+
+
+def test_token_usage_event_records_tool_and_reporting_time() -> None:
+    occurred_at = datetime(2026, 7, 30, 1, 0, tzinfo=UTC)
+    reported_at = datetime(2026, 7, 30, 1, 5, tzinfo=UTC)
+
+    event = TokenUsageEvent(
+        source_event_id="event-1",
+        tool=TokenUsageTool.OPENCODE,
+        occurred_at=occurred_at,
+        reported_at=reported_at,
+        model="glm-5",
+    )
+
+    assert event.tool is TokenUsageTool.OPENCODE
+    assert event.occurred_at is occurred_at
+    assert event.reported_at is reported_at
 
 
 def test_token_usage_event_rejects_negative_counts() -> None:
-    stream = TokenUsageStream(
-        collector_id="collector-1",
-        tool=TokenUsageTool.CLAUDE,
-        stream_id="session-1",
-    )
-
     with pytest.raises(ValueError, match="token counts"):
         TokenUsageEvent(
             source_event_id="event-1",
-            stream=stream,
+            tool=TokenUsageTool.CLAUDE,
             occurred_at=datetime.now(UTC),
+            reported_at=datetime.now(UTC),
             model="claude-sonnet",
             input_tokens=-1,
         )
-
-
-def test_token_usage_checkpoint_rejects_negative_revision() -> None:
-    stream = TokenUsageStream(
-        collector_id="collector-1",
-        tool=TokenUsageTool.OPENCODE,
-        stream_id="database-main",
-    )
-
-    with pytest.raises(ValueError, match="revision"):
-        TokenUsageCheckpoint(stream=stream, cursor={}, revision=-1)

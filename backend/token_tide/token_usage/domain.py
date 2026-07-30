@@ -11,34 +11,17 @@ class TokenUsageTool(StrEnum):
 
 
 @dataclass(frozen=True)
-class TokenUsageCollector:
-    id: str
-    name: str
-
-
-@dataclass(frozen=True)
-class TokenUsageStream:
-    collector_id: str
-    tool: TokenUsageTool
-    stream_id: str
-
-
-@dataclass(frozen=True)
 class TokenUsageCheckpoint:
-    stream: TokenUsageStream
+    tool: TokenUsageTool
     cursor: Mapping[str, object]
-    revision: int
-
-    def __post_init__(self) -> None:
-        if self.revision < 0:
-            raise ValueError("revision must not be negative")
 
 
 @dataclass(frozen=True)
 class TokenUsageEvent:
     source_event_id: str
-    stream: TokenUsageStream
+    tool: TokenUsageTool
     occurred_at: datetime
+    reported_at: datetime
     model: str
     provider: str = ""
     input_tokens: int = 0
