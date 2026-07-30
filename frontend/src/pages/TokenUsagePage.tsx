@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   findTokenUsageSummary,
   type TokenUsageSummary,
   type TokenUsageTool,
 } from '@/api/tokenUsage';
+import ProductNavigation from '@/components/ProductNavigation';
 import UsageTideChart from '@/components/UsageTideChart';
-import { formatTokenCount } from '@/lib/display';
+import {
+  formatCompactTokenCount,
+  formatTokenCount,
+} from '@/lib/display';
 
 type UsagePeriod = 'today' | '7d' | '30d';
 type ToolFilter = 'all' | TokenUsageTool;
@@ -107,10 +111,6 @@ export default function TokenUsagePage() {
     setSearchParams({ period: nextPeriod, tool: nextTool });
   };
 
-  const rangeLabel = useMemo(
-    () => PERIODS.find((item) => item.value === period)?.label ?? '7 天',
-    [period],
-  );
   const largestModelTotal = Math.max(
     ...(summary?.models.map((model) => model.total_tokens) ?? []),
     1,
@@ -127,11 +127,13 @@ export default function TokenUsagePage() {
             <img src="/favicon.svg" alt="" />
           </span>
           <div>
-            <p>TokenTide</p>
-            <span>使用量</span>
+            <p>TokenUsage</p>
+            <span>Token 用量</span>
           </div>
         </div>
       </header>
+
+      <ProductNavigation />
 
       <section className="usage-filter-panel" aria-label="使用量筛选">
         <div className="usage-filter-row">
@@ -196,18 +198,27 @@ export default function TokenUsagePage() {
           <section className="usage-hero" aria-labelledby="usage-total-title">
             <div className="usage-hero-heading">
               <div>
-                <p className="section-kicker">TOKEN CURRENT</p>
-                <span id="usage-total-title">{rangeLabel}使用量</span>
+                <p className="section-kicker" id="usage-total-title">TOTAL</p>
               </div>
               <span>{formatTokenCount(summary.totals.event_count)} 次请求</span>
             </div>
-            <strong>{formatTokenCount(summary.totals.total_tokens)}</strong>
-            <p className="usage-unit">TOKENS</p>
+            <strong
+              aria-label={`${formatTokenCount(summary.totals.total_tokens)} Tokens`}
+              title={`${formatTokenCount(summary.totals.total_tokens)} Tokens`}
+            >
+              {formatCompactTokenCount(summary.totals.total_tokens)}
+            </strong>
+            <p className="usage-unit">TOKENS 分布</p>
             <dl className="usage-token-details">
               {TOKEN_DETAILS.map((item) => (
                 <div key={item.field}>
                   <dt>{item.label}</dt>
-                  <dd>{formatTokenCount(summary.totals[item.field], true)}</dd>
+                  <dd
+                    aria-label={`${formatTokenCount(summary.totals[item.field])} Tokens`}
+                    title={formatTokenCount(summary.totals[item.field])}
+                  >
+                    {formatCompactTokenCount(summary.totals[item.field])}
+                  </dd>
                 </div>
               ))}
             </dl>
@@ -224,10 +235,9 @@ export default function TokenUsagePage() {
               <section className="usage-panel usage-tide-panel">
                 <div className="section-heading">
                   <div>
-                    <p className="section-kicker">DAILY CURRENT</p>
+                    <p className="section-kicker">DAILY TOKEN</p>
                     <h1>用量潮线</h1>
                   </div>
-                  <span>本地日界线</span>
                 </div>
                 <UsageTideChart days={summary.timeline} />
               </section>
@@ -245,7 +255,12 @@ export default function TokenUsagePage() {
                     <li key={model.model}>
                       <div className="usage-model-heading">
                         <span title={model.model}>{model.model}</span>
-                        <strong>{formatTokenCount(model.total_tokens, true)}</strong>
+                        <strong
+                          aria-label={`${formatTokenCount(model.total_tokens)} Tokens`}
+                          title={formatTokenCount(model.total_tokens)}
+                        >
+                          {formatCompactTokenCount(model.total_tokens)}
+                        </strong>
                       </div>
                       <div className="usage-model-track" aria-hidden="true">
                         <span

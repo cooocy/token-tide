@@ -3,7 +3,10 @@ import {
   type TokenUsageDay,
   type TokenUsageTool,
 } from '@/api/tokenUsage';
-import { formatTokenCount } from '@/lib/display';
+import {
+  formatCompactTokenCount,
+  formatTokenCount,
+} from '@/lib/display';
 
 const TOOL_ORDER: TokenUsageTool[] = ['opencode', 'codex', 'claude'];
 const TOOL_NAMES: Record<TokenUsageTool, string> = {
@@ -34,14 +37,28 @@ export default function UsageTideChart({ days }: UsageTideChartProps) {
   return (
     <div className="usage-tide-chart">
       <div className="usage-tide-readout" aria-live="polite">
-        <div>
+        <div className="usage-day-summary">
           <span>{selected ? formatDay(selected.date) : '—'}</span>
-          <strong>{formatTokenCount(selected?.total_tokens ?? 0)}</strong>
+          <strong
+            aria-label={`${formatTokenCount(selected?.total_tokens ?? 0)} Tokens`}
+            title={formatTokenCount(selected?.total_tokens ?? 0)}
+          >
+            {formatCompactTokenCount(selected?.total_tokens ?? 0)} Tokens
+          </strong>
         </div>
         <div className="usage-day-tools">
           {TOOL_ORDER.slice().reverse().map((tool) => (
-            <span className={`is-${tool}`} key={tool}>
-              {TOOL_NAMES[tool]} {formatTokenCount(selected?.tools[tool] ?? 0, true)}
+            <span
+              className={`is-${tool}`}
+              aria-label={`${TOOL_NAMES[tool]} ${
+                formatTokenCount(selected?.tools[tool] ?? 0)
+              } Tokens`}
+              title={formatTokenCount(selected?.tools[tool] ?? 0)}
+              key={tool}
+            >
+              {TOOL_NAMES[tool]} {
+                formatCompactTokenCount(selected?.tools[tool] ?? 0)
+              }
             </span>
           ))}
         </div>

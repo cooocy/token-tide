@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { findBalances, type ProviderBalance, type ProviderStatus } from '@/api/balance';
+import ProductNavigation from '@/components/ProductNavigation';
 import ProviderMark from '@/components/ProviderMark';
 import {
   formatAmount,
@@ -82,15 +83,13 @@ export default function DashboardPage() {
         )}
       </header>
 
+      <ProductNavigation />
+
       <section className="overview-heading" aria-labelledby="overview-title">
         <div>
           <p className="section-kicker">BALANCE DASHBOARD</p>
           <h1 id="overview-title">余额看板</h1>
         </div>
-        <Link className="usage-entry" to="/usage">
-          <span>查看使用量</span>
-          <ArrowIcon />
-        </Link>
       </section>
 
       <div className="message-stack" aria-live="polite">

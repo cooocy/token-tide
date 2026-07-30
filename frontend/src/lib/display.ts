@@ -82,12 +82,44 @@ export function formatSignedAmount(value: number): string {
   return `${sign}${value.toFixed(2)}`;
 }
 
-export function formatTokenCount(value: number, compact = false): string {
+export function formatTokenCount(value: number): string {
   if (!Number.isFinite(value)) {
     return '—';
   }
-  return new Intl.NumberFormat('zh-CN', compact
-    ? { notation: 'compact', maximumFractionDigits: 1 }
-    : { maximumFractionDigits: 0 }
-  ).format(value);
+  return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 }).format(value);
+}
+
+const TOKEN_UNITS = [
+  { divisor: 1_000, suffix: 'K' },
+  { divisor: 1_000_000, suffix: 'M' },
+  { divisor: 1_000_000_000, suffix: 'B' },
+] as const;
+
+export function formatCompactTokenCount(value: number): string {
+  if (!Number.isFinite(value)) {
+    return '—';
+  }
+
+  const absoluteValue = Math.abs(value);
+  if (absoluteValue < TOKEN_UNITS[0].divisor) {
+    return formatTokenCount(value);
+  }
+
+  let unitIndex = absoluteValue >= TOKEN_UNITS[2].divisor
+    ? 2
+    : absoluteValue >= TOKEN_UNITS[1].divisor
+      ? 1
+      : 0;
+  let scaledValue = value / TOKEN_UNITS[unitIndex].divisor;
+  if (
+    Math.abs(Math.round(scaledValue * 10) / 10) >= 1_000 &&
+    unitIndex < TOKEN_UNITS.length - 1
+  ) {
+    unitIndex += 1;
+    scaledValue = value / TOKEN_UNITS[unitIndex].divisor;
+  }
+
+  return `${new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: 1,
+  }).format(scaledValue)}${TOKEN_UNITS[unitIndex].suffix}`;
 }

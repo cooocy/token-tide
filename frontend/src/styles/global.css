@@ -197,6 +197,60 @@ svg {
   box-shadow: 0 0 0 4px rgba(50, 214, 197, 0.1);
 }
 
+.product-navigation {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.product-navigation a {
+  position: relative;
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-family: var(--display-font);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease;
+}
+
+.product-navigation a::after {
+  position: absolute;
+  right: 14px;
+  bottom: -1px;
+  left: 14px;
+  height: 2px;
+  border-radius: 999px 999px 0 0;
+  background: var(--current);
+  content: "";
+  opacity: 0;
+  transform: scaleX(0.55);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.product-navigation a:hover {
+  color: var(--mist);
+  background: rgba(168, 207, 203, 0.025);
+}
+
+.product-navigation a.is-active {
+  color: var(--foam);
+}
+
+.product-navigation a.is-active::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
 .overview-heading {
   display: flex;
   align-items: flex-end;
@@ -1064,25 +1118,8 @@ svg {
 
 /* Token usage */
 
-.usage-entry {
-  display: inline-flex;
-  min-height: 44px;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 5px;
-  color: var(--current);
-  font-size: 0.72rem;
-  font-weight: 650;
-}
-
-.usage-entry svg {
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.8;
+.dashboard-page .overview-heading {
+  padding-top: 38px;
 }
 
 .usage-page {
@@ -1090,8 +1127,7 @@ svg {
 }
 
 .usage-header {
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--line);
+  padding-bottom: 0;
 }
 
 .usage-header-title {
@@ -1133,7 +1169,7 @@ svg {
 .usage-filter-panel {
   display: grid;
   gap: 9px;
-  padding: 20px 0 4px;
+  padding: 24px 0 4px;
 }
 
 .usage-filter-row {
@@ -1204,7 +1240,7 @@ svg {
 }
 
 .usage-hero {
-  padding: 38px 0 28px;
+  padding: 40px 0 30px;
 }
 
 .usage-hero-heading {
@@ -1220,13 +1256,6 @@ svg {
   margin: 0;
 }
 
-.usage-hero-heading > div > span {
-  display: block;
-  margin-top: 5px;
-  color: var(--mist);
-  font-size: 0.76rem;
-}
-
 .usage-hero-heading > span {
   color: var(--muted);
   font-family: var(--data-font);
@@ -1236,26 +1265,26 @@ svg {
 
 .usage-hero > strong {
   display: block;
-  margin-top: 11px;
+  margin-top: 14px;
   overflow: hidden;
   color: var(--foam);
   font-family: var(--display-font);
-  font-size: clamp(3.15rem, 17vw, 7rem);
+  font-size: clamp(3.4rem, 17vw, 7.2rem);
   font-variant-numeric: tabular-nums;
   font-weight: 450;
-  letter-spacing: -0.075em;
+  letter-spacing: -0.065em;
   line-height: 0.9;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .usage-unit {
-  margin-top: 8px !important;
+  margin-top: 13px !important;
   color: var(--current);
   font-family: var(--data-font);
   font-size: 0.58rem;
   font-weight: 650;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.14em;
 }
 
 .usage-token-details {
@@ -1271,7 +1300,7 @@ svg {
 
 .usage-token-details > div {
   min-width: 0;
-  padding: 13px 11px;
+  padding: 14px 12px;
   background: var(--panel);
 }
 
@@ -1285,13 +1314,11 @@ svg {
 
 .usage-token-details dd {
   margin: 6px 0 0;
-  overflow: hidden;
   color: var(--mist);
   font-family: var(--data-font);
   font-size: 0.74rem;
   font-variant-numeric: tabular-nums;
   font-weight: 650;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -1317,31 +1344,34 @@ svg {
 }
 
 .usage-tide-chart {
-  margin-top: 20px;
+  margin-top: 22px;
 }
 
 .usage-tide-readout {
   display: flex;
-  min-height: 48px;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
+  min-height: 64px;
+  flex-direction: column;
+  gap: 9px;
   padding: 0 6px;
 }
 
-.usage-tide-readout > div:first-child > span {
-  display: block;
+.usage-day-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.usage-day-summary > span {
   color: var(--muted);
   font-family: var(--data-font);
   font-size: 0.6rem;
 }
 
-.usage-tide-readout strong {
-  display: block;
-  margin-top: 3px;
+.usage-day-summary strong {
   color: var(--foam);
   font-family: var(--data-font);
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   font-variant-numeric: tabular-nums;
   font-weight: 650;
 }
@@ -1349,8 +1379,8 @@ svg {
 .usage-day-tools {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 4px 10px;
+  justify-content: flex-start;
+  gap: 5px 14px;
   font-family: var(--data-font);
   font-size: 0.57rem;
   font-variant-numeric: tabular-nums;
@@ -1432,8 +1462,8 @@ svg {
 
 .usage-day.is-selected .usage-day-track {
   box-shadow:
-    0 0 0 1px rgba(231, 245, 244, 0.28),
-    0 0 18px rgba(50, 214, 197, 0.08);
+    0 0 0 1px rgba(231, 245, 244, 0.34),
+    0 0 22px rgba(50, 214, 197, 0.13);
 }
 
 .usage-day-segment {
@@ -1582,8 +1612,13 @@ svg {
     border-top: 1px solid var(--line);
   }
 
-  .usage-day-tools {
-    max-width: 58%;
+  .usage-hero-heading {
+    align-items: center;
+  }
+
+  .usage-tide-panel {
+    padding-right: 10px;
+    padding-left: 10px;
   }
 }
 
