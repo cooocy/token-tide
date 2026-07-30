@@ -4,7 +4,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -22,6 +22,29 @@ def json_line(value: object) -> str:
 
 
 class TokenUsageCollectorTest(unittest.TestCase):
+    def test_default_logging_shows_result_without_verbose_stages(self) -> None:
+        class Client:
+            @staticmethod
+            def checkpoint(_tool: str) -> dict[str, object]:
+                return {"version": 1}
+
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            result = sync_tool(
+                Client(),  # type: ignore[arg-type]
+                "claude",
+                lambda cursor: ScanResult(events=[], cursor=cursor),
+                batch_size=500,
+                verbose=False,
+            )
+
+        output = stderr.getvalue()
+        self.assertEqual(result.events, 0)
+        self.assertIn("[claude] sync started", output)
+        self.assertIn("[claude] no changes", output)
+        self.assertNotIn("fetching checkpoint", output)
+        self.assertNotIn("scanning local data", output)
+
     def test_only_final_batch_advances_cursor(self) -> None:
         class Client:
             def __init__(self) -> None:
@@ -37,24 +60,33 @@ class TokenUsageCollectorTest(unittest.TestCase):
                 cursor: dict[str, object],
             ) -> dict[str, object]:
                 self.submissions.append((events, cursor))
-                return {}
+                return {
+                    "created": len(events),
+                    "updated": 0,
+                    "unchanged": 0,
+                }
 
         client = Client()
         events = [{"source_event_id": str(index)} for index in range(3)]
 
-        sync_tool(
-            client,  # type: ignore[arg-type]
-            "codex",
-            lambda _cursor: ScanResult(
-                events=events,
-                cursor={"version": 1, "offset": 20},
-            ),
-            batch_size=2,
-            verbose=False,
-        )
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            result = sync_tool(
+                client,  # type: ignore[arg-type]
+                "codex",
+                lambda _cursor: ScanResult(
+                    events=events,
+                    cursor={"version": 1, "offset": 20},
+                ),
+                batch_size=2,
+                verbose=True,
+            )
 
         self.assertEqual(client.submissions[0][1]["offset"], 10)
         self.assertEqual(client.submissions[1][1]["offset"], 20)
+        self.assertEqual(result.created, 3)
+        self.assertIn("uploading batch=1/2", stderr.getvalue())
+        self.assertIn("sync completed events=3", stderr.getvalue())
 
     def test_claude_resumes_offset_and_outputs_invalid_complete_line(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -72,6 +104,14 @@ class TokenUsageCollectorTest(unittest.TestCase):
                     output.write("{invalid}\n")
                     output.write(
                         json_line(
+                            {
+                                "timestamp": "2026-07-30T01:30:00Z",
+                                "message": {"usage": "invalid"},
+                            }
+                        )
+                    )
+                    output.write(
+                        json_line(
                             self.claude_record(
                                 "message-2",
                                 "2026-07-30T02:00:00Z",
@@ -85,7 +125,17 @@ class TokenUsageCollectorTest(unittest.TestCase):
             self.assertEqual(len(initial.events), 1)
             self.assertEqual(unchanged.events, [])
             self.assertEqual(len(appended.events), 1)
-            self.assertIn('"tool":"claude"', stdout.getvalue())
+            invalid = [
+                json.loads(line)
+                for line in stdout.getvalue().splitlines()
+            ]
+            self.assertEqual(invalid[0]["occurred_at"], None)
+            self.assertEqual(
+                invalid[1]["occurred_at"],
+                "2026-07-30T01:30:00Z",
+            )
+            self.assertNotIn("raw", invalid[0])
+            self.assertNotIn("raw", invalid[1])
 
     def test_codex_restores_cumulative_usage_baseline(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

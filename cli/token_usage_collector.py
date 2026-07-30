@@ -1,4 +1,23 @@
 #!/usr/bin/env python3
+#
+# Required:
+#   TOKEN_TIDE_TOKEN_USAGE_TOKEN=<server token>
+#   TOKEN_TIDE_BASE_URL=<API base URL>
+#
+# TOKEN_TIDE_BASE_URL can alternatively be passed as:
+#   --base-url https://token-tide.example.com/api
+#
+# Optional:
+#   --batch-size 500
+#   --timeout-seconds 15
+#   -v / --verbose  (show checkpoint, scan and per-batch details)
+#   CLAUDE_CONFIG_DIR, CODEX_HOME, OPENCODE_DATA_DIR
+#
+# Example:
+#   TOKEN_TIDE_BASE_URL=https://token-tide.example.com/api \
+#   TOKEN_TIDE_TOKEN_USAGE_TOKEN=secret \
+#   python3 cli/token_usage_collector.py -v
+#
 """Incrementally upload local coding-agent token usage to TokenTide."""
 
 from __future__ import annotations
@@ -11,6 +30,7 @@ import os
 import re
 import sqlite3
 import sys
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -30,9 +50,25 @@ class ScanResult:
     cursor: dict[str, object]
 
 
-def verbose_log(enabled: bool, message: str) -> None:
+@dataclass(frozen=True)
+class SyncResult:
+    tool: str
+    events: int
+    batches: int
+    created: int
+    updated: int
+    unchanged: int
+    duration_seconds: float
+
+
+def log_message(level: str, scope: str, message: str) -> None:
+    timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
+    print(f"{timestamp} {level} [{scope}] {message}", file=sys.stderr)
+
+
+def verbose_log(enabled: bool, scope: str, message: str) -> None:
     if enabled:
-        print(message, file=sys.stderr)
+        log_message("INFO", scope, message)
 
 
 def stable_hash(*values: object) -> str:
@@ -79,20 +115,21 @@ def output_invalid(
     source: str,
     position: object,
     error: str,
-    raw: object,
+    occurred_at: Optional[datetime] = None,
 ) -> None:
     print(
         json.dumps(
             {
                 "tool": tool,
+                "occurred_at": (
+                    utc_string(occurred_at) if occurred_at is not None else None
+                ),
                 "source": source,
                 "position": position,
                 "error": error,
-                "raw": raw,
             },
             ensure_ascii=False,
             separators=(",", ":"),
-            default=str,
         )
     )
 
@@ -169,11 +206,10 @@ def decode_json_line(
             source,
             position,
             str(error),
-            raw.decode("utf-8", errors="replace").rstrip("\n"),
         )
         return None
     if not isinstance(value, dict):
-        output_invalid(tool, source, position, "record must be an object", value)
+        output_invalid(tool, source, position, "record must be an object")
         return None
     return value
 
@@ -261,6 +297,7 @@ def claude_event(
     message = entry.get("message")
     if not isinstance(message, dict) or "usage" not in message:
         return None
+    occurred_at = parse_timestamp(entry.get("timestamp"))
     try:
         usage = message["usage"]
         if not isinstance(usage, dict):
@@ -268,7 +305,6 @@ def claude_event(
         version = entry.get("version")
         if isinstance(version, str) and not SEMVER_PREFIX.match(version):
             raise ValueError("unsupported version")
-        occurred_at = parse_timestamp(entry.get("timestamp"))
         model = message.get("model")
         if occurred_at is None:
             raise ValueError("timestamp must include timezone")
@@ -307,7 +343,13 @@ def claude_event(
         )
         return event, rank
     except (TypeError, ValueError) as error:
-        output_invalid("claude", source, position, str(error), raw)
+        output_invalid(
+            "claude",
+            source,
+            position,
+            str(error),
+            occurred_at,
+        )
         return None
 
 
@@ -477,7 +519,13 @@ def scan_codex(cursor: dict[str, object]) -> ScanResult:
                     )
                 )
             except (TypeError, ValueError) as error:
-                output_invalid("codex", key, position, str(error), raw)
+                output_invalid(
+                    "codex",
+                    key,
+                    position,
+                    str(error),
+                    parse_timestamp(raw.get("timestamp")),
+                )
         next_files[key] = {
             "identity": identity,
             "offset": next_offset,
@@ -519,6 +567,7 @@ def opencode_event(
 ) -> Optional[dict[str, object]]:
     if raw.get("role") not in (None, "assistant"):
         return None
+    occurred_at: Optional[datetime] = None
     try:
         tokens = raw.get("tokens")
         model = raw.get("modelID")
@@ -531,6 +580,7 @@ def opencode_event(
             raise ValueError("modelID is required")
         if not isinstance(created, (int, float)):
             raise ValueError("time.created is required")
+        occurred_at = datetime.fromtimestamp(created / 1000, tz=UTC)
         cache = tokens.get("cache")
         cache = cache if isinstance(cache, dict) else {}
         input_tokens = token_int(tokens, "input")
@@ -544,7 +594,7 @@ def opencode_event(
             return None
         return event_value(
             stable_hash("opencode", message_id),
-            datetime.fromtimestamp(created / 1000, tz=UTC),
+            occurred_at,
             model,
             provider=provider if isinstance(provider, str) else "",
             input_tokens=input_tokens,
@@ -555,7 +605,13 @@ def opencode_event(
             total_tokens=total,
         )
     except (OSError, OverflowError, TypeError, ValueError) as error:
-        output_invalid("opencode", source, position, str(error), raw)
+        output_invalid(
+            "opencode",
+            source,
+            position,
+            str(error),
+            occurred_at,
+        )
         return None
 
 
@@ -610,7 +666,6 @@ def scan_opencode(cursor: dict[str, object]) -> ScanResult:
                                 key,
                                 message_id,
                                 str(error),
-                                data,
                             )
                             continue
                         if not isinstance(raw, dict):
@@ -619,7 +674,6 @@ def scan_opencode(cursor: dict[str, object]) -> ScanResult:
                                 key,
                                 message_id,
                                 "record must be an object",
-                                raw,
                             )
                             continue
                         event = opencode_event(raw, str(message_id), key, message_id)
@@ -650,7 +704,6 @@ def scan_opencode(cursor: dict[str, object]) -> ScanResult:
                     key,
                     0,
                     str(error),
-                    raw_bytes.decode("utf-8", errors="replace"),
                 )
             else:
                 if isinstance(raw, dict):
@@ -666,7 +719,6 @@ def scan_opencode(cursor: dict[str, object]) -> ScanResult:
                         key,
                         0,
                         "record must be an object",
-                        raw,
                     )
             stat_result = file_path.stat()
             next_files[key] = {
@@ -753,28 +805,76 @@ def sync_tool(
     scanner: Callable[[dict[str, object]], ScanResult],
     batch_size: int,
     verbose: bool,
-) -> None:
+) -> SyncResult:
+    started_at = time.monotonic()
+    log_message("INFO", tool, "sync started")
+    verbose_log(verbose, tool, "fetching checkpoint")
     previous_cursor = client.checkpoint(tool)
+    cursor_version = previous_cursor.get("version", "empty")
+    verbose_log(verbose, tool, f"checkpoint fetched version={cursor_version}")
+    verbose_log(verbose, tool, "scanning local data")
     result = scanner(previous_cursor)
+    verbose_log(verbose, tool, f"scan completed events={len(result.events)}")
     if not result.events and result.cursor == previous_cursor:
-        verbose_log(verbose, f"[{tool}] no changes")
-        return
+        duration = time.monotonic() - started_at
+        log_message("INFO", tool, f"no changes duration={duration:.2f}s")
+        return SyncResult(tool, 0, 0, 0, 0, 0, duration)
     batches = [
         result.events[index : index + batch_size]
         for index in range(0, len(result.events), batch_size)
     ]
     if not batches:
         batches = [[]]
+    created = updated = unchanged = 0
     for index, batch in enumerate(batches):
         final = index == len(batches) - 1
-        client.submit(
+        verbose_log(
+            verbose,
             tool,
-            batch,
-            result.cursor if final else previous_cursor,
+            f"uploading batch={index + 1}/{len(batches)} events={len(batch)}",
         )
-    verbose_log(
-        verbose,
-        f"[{tool}] events={len(result.events)} batches={len(batches)} cursor=updated",
+        try:
+            response = client.submit(
+                tool,
+                batch,
+                result.cursor if final else previous_cursor,
+            )
+        except RuntimeError as error:
+            raise RuntimeError(
+                f"batch={index + 1}/{len(batches)} failed: {error}"
+            ) from error
+        counts: dict[str, int] = {}
+        for name in ("created", "updated", "unchanged"):
+            value = response.get(name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise RuntimeError(f"Server returned an invalid {name} count")
+            counts[name] = value
+        created += counts["created"]
+        updated += counts["updated"]
+        unchanged += counts["unchanged"]
+        verbose_log(
+            verbose,
+            tool,
+            f"batch={index + 1}/{len(batches)} uploaded "
+            f"created={counts['created']} updated={counts['updated']} "
+            f"unchanged={counts['unchanged']}",
+        )
+    duration = time.monotonic() - started_at
+    log_message(
+        "INFO",
+        tool,
+        f"sync completed events={len(result.events)} batches={len(batches)} "
+        f"created={created} updated={updated} unchanged={unchanged} "
+        f"duration={duration:.2f}s",
+    )
+    return SyncResult(
+        tool=tool,
+        events=len(result.events),
+        batches=len(batches),
+        created=created,
+        updated=updated,
+        unchanged=unchanged,
+        duration_seconds=duration,
     )
 
 
@@ -794,7 +894,12 @@ def main() -> None:
         help=f"events per request, 1-{MAX_BATCH_SIZE}",
     )
     parser.add_argument("--timeout-seconds", type=float, default=15)
-    parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="show checkpoint, scan and per-batch details",
+    )
     args = parser.parse_args()
     token = os.environ.get("TOKEN_TIDE_TOKEN_USAGE_TOKEN")
     if not args.base_url:
@@ -806,27 +911,47 @@ def main() -> None:
     if args.timeout_seconds <= 0:
         parser.error("--timeout-seconds must be positive")
 
+    started_at = time.monotonic()
+    log_message("INFO", "sync", f"started tools={','.join(TOOLS)}")
     client = TokenTideClient(args.base_url, token, args.timeout_seconds)
     scanners: dict[str, Callable[[dict[str, object]], ScanResult]] = {
         "claude": scan_claude,
         "codex": scan_codex,
         "opencode": scan_opencode,
     }
-    failures = []
+    failures: list[str] = []
+    results: list[SyncResult] = []
     for tool in TOOLS:
         try:
-            sync_tool(
-                client,
-                tool,
-                scanners[tool],
-                args.batch_size,
-                args.verbose,
+            results.append(
+                sync_tool(
+                    client,
+                    tool,
+                    scanners[tool],
+                    args.batch_size,
+                    args.verbose,
+                )
             )
         except (OSError, RuntimeError, sqlite3.Error) as error:
             failures.append(tool)
-            print(f"[{tool}] {error}", file=sys.stderr)
+            log_message("ERROR", tool, str(error))
+    duration = time.monotonic() - started_at
+    totals = {
+        field: sum(getattr(result, field) for result in results)
+        for field in ("events", "batches", "created", "updated", "unchanged")
+    }
+    level = "ERROR" if failures else "INFO"
+    log_message(
+        level,
+        "sync",
+        f"completed succeeded={len(results)} failed={len(failures)} "
+        f"events={totals['events']} batches={totals['batches']} "
+        f"created={totals['created']} updated={totals['updated']} "
+        f"unchanged={totals['unchanged']} duration={duration:.2f}s"
+        + (f" failed_tools={','.join(failures)}" if failures else ""),
+    )
     if failures:
-        raise SystemExit(f"sync failed: {', '.join(failures)}")
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

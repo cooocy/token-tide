@@ -209,11 +209,14 @@ python3 cli/token_usage_collector.py
 ```
 
 默认每批最多上报 500 条，可通过 `--batch-size` 调小；`--timeout-seconds` 控制请求
-超时，`-v` 将进度写到 stderr。成功批次中的事件写入与 cursor 更新在服务端同一事务
-完成，失败重试不会重复计数。
+超时。脚本默认将整体开始、每个 Tool 的结果和最终汇总写到 stderr；`-v` 会进一步
+显示 cursor 回查、扫描结果及每批上传的 created/updated/unchanged。成功批次中的
+事件写入与 cursor 更新在服务端同一事务完成，失败重试不会重复计数。
 
-完整但不合法的本地记录以单行 JSON 输出到 stdout，并在输出后跳过；运行状态和网络
-错误写 stderr。未完成的 JSONL 尾行不会推进 cursor，会在下次运行时继续读取。
+完整但不合法的本地记录以单行 JSON 输出到 stdout，并在输出后跳过。每行只包含
+`tool`、`occurred_at`、`source`、`position` 和 `error`，不包含完整原始 JSON；
+无法读取原始请求时间时 `occurred_at` 为 `null`。运行状态和网络错误写 stderr。
+未完成的 JSONL 尾行不会推进 cursor，会在下次运行时继续读取。
 
 可通过以下变量覆盖本地数据目录：
 
