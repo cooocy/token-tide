@@ -1626,7 +1626,7 @@ svg {
 .usage-total-body {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(116px, 0.72fr) minmax(0, 1.28fr);
+  grid-template-columns: minmax(132px, 0.8fr) minmax(0, 1.2fr);
   align-items: end;
   gap: 18px;
   margin-top: 14px;
@@ -1638,7 +1638,7 @@ svg {
   overflow: hidden;
   color: var(--foam);
   font-family: var(--display-font);
-  font-size: clamp(2.9rem, 15vw, 4.9rem);
+  font-size: clamp(2.35rem, 10vw, 4.2rem);
   font-variant-numeric: tabular-nums;
   font-weight: 450;
   letter-spacing: -0.07em;
@@ -1903,7 +1903,7 @@ svg {
   }
 
   .usage-total-body {
-    grid-template-columns: minmax(108px, 0.72fr) minmax(0, 1.28fr);
+    grid-template-columns: minmax(132px, 0.8fr) minmax(0, 1.2fr);
     gap: 14px;
   }
 
