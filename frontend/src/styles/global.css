@@ -1220,59 +1220,6 @@ svg {
   overflow-wrap: anywhere;
 }
 
-.usage-token-breakdown {
-  margin-bottom: 28px;
-}
-
-.usage-token-details {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 1px;
-  margin: 16px 0 0;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 15px;
-  background: var(--line);
-}
-
-.usage-token-details > div {
-  min-width: 0;
-  padding: 14px 12px;
-  background: var(--panel);
-}
-
-.usage-token-details > div.is-primary {
-  grid-column: span 3;
-  padding: 16px 14px;
-}
-
-.usage-token-details > div.is-secondary {
-  grid-column: span 2;
-}
-
-.usage-token-details dt {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 0.61rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.usage-token-details dd {
-  margin: 6px 0 0;
-  color: var(--mist);
-  font-family: var(--data-font);
-  font-size: 0.74rem;
-  font-variant-numeric: tabular-nums;
-  font-weight: 650;
-  white-space: nowrap;
-}
-
-.usage-token-details .is-primary dd {
-  color: var(--foam);
-  font-size: 0.88rem;
-}
-
 .usage-empty {
   margin-top: 4px;
 }
@@ -1933,19 +1880,16 @@ svg {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.usage-analysis .usage-token-breakdown {
-  margin-top: 30px;
-}
-
-.usage-token-breakdown > .section-heading {
-  padding: 0;
-}
-
-.usage-token-breakdown .section-heading h2,
 .usage-panel .section-heading h2 {
   margin-top: 4px;
   font-size: 0.86rem;
   line-height: 1.25;
+}
+
+.usage-analysis .usage-period-reading {
+  margin: 30px 0 28px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
 }
 
 .usage-analysis > .usage-skeleton {
@@ -2038,6 +1982,24 @@ svg {
 
   .usage-lifetime-breakdown > p {
     display: none;
+  }
+
+  .usage-period-reading .usage-total-body {
+    display: grid;
+    grid-template-columns: minmax(220px, 0.72fr) minmax(0, 1.28fr);
+    align-items: end;
+  }
+
+  .usage-period-reading .usage-lifetime-breakdown {
+    margin-top: 0;
+    padding-top: 0;
+    padding-left: 18px;
+    border-top: 0;
+    border-left: 1px solid rgba(168, 207, 203, 0.16);
+  }
+
+  .usage-period-reading .usage-lifetime-breakdown > p {
+    display: block;
   }
 
   .usage-distribution-body {

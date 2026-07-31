@@ -6,6 +6,7 @@ import {
   type TokenUsageOverview,
   type TokenUsageSummary,
   type TokenUsageTool,
+  type TokenUsageTotals,
 } from '@/api/tokenUsage';
 import ProductHeader from '@/components/ProductHeader';
 import ProductNavigation from '@/components/ProductNavigation';
@@ -113,6 +114,70 @@ function modelDistribution(overview: TokenUsageOverview): UsageDistributionItem[
     });
   }
   return items;
+}
+
+interface UsageTokenReadingProps {
+  className?: string;
+  detailsLabel: string;
+  kicker: string;
+  title: string;
+  titleId: string;
+  totals: TokenUsageTotals;
+}
+
+function UsageTokenReading({
+  className,
+  detailsLabel,
+  kicker,
+  title,
+  titleId,
+  totals,
+}: UsageTokenReadingProps) {
+  return (
+    <section
+      className={`usage-total-reading${className ? ` ${className}` : ''}`}
+      aria-labelledby={titleId}
+    >
+      <p className="section-kicker">{kicker}</p>
+      <h2 id={titleId}>{title}</h2>
+      <div className="usage-total-body">
+        <div className="usage-total-metric-row">
+          <strong
+            aria-label={`${formatTokenCount(totals.total_tokens)} Tokens`}
+          >
+            {formatCompactTokenCount(totals.total_tokens)}
+          </strong>
+          <div className="usage-total-meta">
+            <span className="usage-total-exact">
+              {formatTokenCount(totals.total_tokens)} Tokens
+            </span>
+            <span className="usage-request-count">
+              {formatTokenCount(totals.event_count)} 次请求
+            </span>
+          </div>
+        </div>
+
+        <div className="usage-lifetime-breakdown">
+          <p>{detailsLabel}</p>
+          <dl>
+            {TOKEN_DETAILS.map((item) => (
+              <div className={`is-${item.prominence}`} key={item.field}>
+                <dt>{item.label}</dt>
+                <dd
+                  aria-label={`${
+                    formatTokenCount(totals[item.field])
+                  } Tokens`}
+                  title={formatTokenCount(totals[item.field])}
+                >
+                  {formatCompactTokenCount(totals[item.field])}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 export default function TokenUsagePage() {
@@ -242,8 +307,8 @@ export default function TokenUsagePage() {
       <section className="usage-hero" aria-labelledby="usage-title">
         <div className="section-heading usage-overview-heading">
           <div>
-            <p className="section-kicker">ALL-TIME OVERVIEW</p>
-            <h1 id="usage-title">Token 用量</h1>
+            <p className="section-kicker">ALL-TIME</p>
+            <h1 id="usage-title">总计</h1>
           </div>
         </div>
 
@@ -272,58 +337,13 @@ export default function TokenUsagePage() {
 
         {overview && (
           <div className="usage-overview-grid">
-            <section
-              className="usage-total-reading"
-              aria-labelledby="usage-total-title"
-            >
-              <p className="section-kicker">TOTAL TOKENS</p>
-              <h2 id="usage-total-title">累计总用量</h2>
-              <div className="usage-total-body">
-                <div className="usage-total-metric-row">
-                  <strong
-                    aria-label={`${formatTokenCount(
-                      overview.totals.total_tokens,
-                    )} Tokens`}
-                  >
-                    {formatCompactTokenCount(overview.totals.total_tokens)}
-                  </strong>
-                  <div className="usage-total-meta">
-                    <span className="usage-total-exact">
-                      {formatTokenCount(overview.totals.total_tokens)} Tokens
-                    </span>
-                    <span className="usage-request-count">
-                      {formatTokenCount(overview.totals.event_count)} 次请求
-                    </span>
-                  </div>
-                </div>
-
-                <div className="usage-lifetime-breakdown">
-                  <p>累计明细</p>
-                  <dl>
-                    {TOKEN_DETAILS.map((item) => (
-                      <div
-                        className={`is-${item.prominence}`}
-                        key={item.field}
-                      >
-                        <dt>{item.label}</dt>
-                        <dd
-                          aria-label={`${
-                            formatTokenCount(overview.totals[item.field])
-                          } Tokens`}
-                          title={formatTokenCount(
-                            overview.totals[item.field],
-                          )}
-                        >
-                          {formatCompactTokenCount(
-                            overview.totals[item.field],
-                          )}
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                </div>
-              </div>
-            </section>
+            <UsageTokenReading
+              detailsLabel="累计明细"
+              kicker="TOKEN BREAKDOWN"
+              title="Tokens 分布"
+              titleId="usage-total-title"
+              totals={overview.totals}
+            />
 
             <UsageDistributionChart
               kicker="TOOL SHARE"
@@ -349,9 +369,6 @@ export default function TokenUsagePage() {
             <p className="section-kicker">FILTERED ANALYSIS</p>
             <h2 id="usage-analysis-title">用量分析</h2>
           </div>
-          {summary && (
-            <span>{formatTokenCount(summary.totals.event_count)} 次请求</span>
-          )}
         </div>
 
         <div className="usage-filter-panel" aria-label="使用量筛选">
@@ -413,32 +430,14 @@ export default function TokenUsagePage() {
 
         {summary && (
           <>
-            <section
-              className="usage-token-breakdown"
-              aria-labelledby="usage-breakdown-title"
-            >
-              <div className="section-heading">
-                <div>
-                  <p className="section-kicker">TOKEN BREAKDOWN</p>
-                  <h2 id="usage-breakdown-title">Token 分布</h2>
-                </div>
-              </div>
-              <dl className="usage-token-details">
-                {TOKEN_DETAILS.map((item) => (
-                  <div className={`is-${item.prominence}`} key={item.field}>
-                    <dt>{item.label}</dt>
-                    <dd
-                      aria-label={`${
-                        formatTokenCount(summary.totals[item.field])
-                      } Tokens`}
-                      title={formatTokenCount(summary.totals[item.field])}
-                    >
-                      {formatCompactTokenCount(summary.totals[item.field])}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </section>
+            <UsageTokenReading
+              className="usage-period-reading"
+              detailsLabel="区间明细"
+              kicker="PERIOD BREAKDOWN"
+              title="区间分布"
+              titleId="usage-breakdown-title"
+              totals={summary.totals}
+            />
 
             {summary.totals.event_count === 0 ? (
               <section className="empty-panel usage-empty">
