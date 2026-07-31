@@ -17,6 +17,7 @@ from token_tide.token_usage.models import (
 from token_tide.token_usage.schemas import (
     TokenUsageBatchInput,
     TokenUsageEventInput,
+    TokenUsageTotals,
 )
 from token_tide.token_usage.service import TokenUsageService
 
@@ -195,6 +196,84 @@ def test_totals_filter_tool_and_return_zero_for_empty_result(
 
     assert usage_service.totals(TokenUsageTool.CODEX).total_tokens == 15
     assert usage_service.totals(TokenUsageTool.CLAUDE).total_tokens == 0
+
+
+def test_overview_aggregates_all_history_by_tool_and_model(
+    service: tuple[TokenUsageService, sessionmaker[Session]],
+) -> None:
+    usage_service, _ = service
+    usage_service.ingest(
+        TokenUsageTool.CODEX,
+        TokenUsageBatchInput(
+            events=[
+                event(
+                    source_event_id="b" * 64,
+                    model="gpt-5",
+                    input_tokens=70,
+                    output_tokens=30,
+                    total_tokens=100,
+                ),
+                event(
+                    source_event_id="c" * 64,
+                    model="gpt-5-mini",
+                    input_tokens=30,
+                    output_tokens=20,
+                    total_tokens=50,
+                ),
+            ],
+            next_cursor={"version": 1},
+        ),
+    )
+    usage_service.ingest(
+        TokenUsageTool.CLAUDE,
+        TokenUsageBatchInput(
+            events=[
+                event(
+                    source_event_id="d" * 64,
+                    model="claude-sonnet-4",
+                    input_tokens=25,
+                    output_tokens=15,
+                    cache_read_tokens=5,
+                    total_tokens=45,
+                )
+            ],
+            next_cursor={"version": 1},
+        ),
+    )
+
+    overview = usage_service.overview()
+
+    assert overview.totals.event_count == 3
+    assert overview.totals.total_tokens == 195
+    assert {
+        item.tool: (item.event_count, item.total_tokens)
+        for item in overview.tools
+    } == {
+        TokenUsageTool.CLAUDE: (1, 45),
+        TokenUsageTool.CODEX: (2, 150),
+        TokenUsageTool.OPENCODE: (0, 0),
+    }
+    assert [
+        (item.model, item.event_count, item.total_tokens)
+        for item in overview.models
+    ] == [
+        ("gpt-5", 1, 100),
+        ("gpt-5-mini", 1, 50),
+        ("claude-sonnet-4", 1, 45),
+    ]
+
+
+def test_overview_returns_empty_tools_and_models(
+    service: tuple[TokenUsageService, sessionmaker[Session]],
+) -> None:
+    usage_service, _ = service
+
+    overview = usage_service.overview()
+
+    assert overview.totals == TokenUsageTotals()
+    assert [item.tool for item in overview.tools] == list(TokenUsageTool)
+    assert all(item.total_tokens == 0 for item in overview.tools)
+    assert overview.models == []
 
 
 def test_summary_aggregates_tools_models_and_local_calendar_days(

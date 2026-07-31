@@ -13,6 +13,7 @@ from token_tide.token_usage.schemas import (
     TokenUsageBatchInput,
     TokenUsageBatchResult,
     TokenUsageCheckpointValue,
+    TokenUsageOverview,
     TokenUsageSummary,
     TokenUsageTotals,
 )
@@ -20,6 +21,14 @@ from token_tide.token_usage.service import TokenUsageService
 
 router = APIRouter(prefix="/token-usage")
 Service = Annotated[TokenUsageService, Depends(get_token_usage_service)]
+
+
+@router.get(
+    "/overview",
+    response_model=R[TokenUsageOverview],
+)
+def find_overview(service: Service) -> R[TokenUsageOverview]:
+    return ok(service.overview())
 
 
 @router.get(

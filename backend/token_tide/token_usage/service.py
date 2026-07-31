@@ -17,6 +17,7 @@ from token_tide.token_usage.schemas import (
     TokenUsageDay,
     TokenUsageEventInput,
     TokenUsageModelSummary,
+    TokenUsageOverview,
     TokenUsageSummary,
     TokenUsageToolSummary,
     TokenUsageTotals,
@@ -70,29 +71,65 @@ class TokenUsageService:
             )
 
     def totals(self, tool: TokenUsageTool | None) -> TokenUsageTotals:
-        statement = select(
-            func.count(TokenUsageEventModel.id).label("event_count"),
-            *[
-                func.coalesce(
-                    func.sum(getattr(TokenUsageEventModel, field)),
-                    0,
-                ).label(field)
-                for field in TOKEN_FIELDS
-            ],
-        )
+        statement = self._totals_statement()
         if tool is not None:
             statement = statement.where(TokenUsageEventModel.tool == tool.value)
 
         with self.session_factory() as session:
             row = session.execute(statement).one()
-        values = row._mapping
+        return self._totals_from_mapping(row._mapping)
 
-        return TokenUsageTotals(
-            event_count=int(values["event_count"]),
-            **{
-                field: int(values[field])
-                for field in TOKEN_FIELDS
-            },
+    def overview(self) -> TokenUsageOverview:
+        tool_statement = select(
+            TokenUsageEventModel.tool,
+            *self._aggregate_columns(),
+        ).group_by(TokenUsageEventModel.tool)
+        model_total = func.coalesce(
+            func.sum(TokenUsageEventModel.total_tokens),
+            0,
+        ).label("total_tokens")
+        model_statement = (
+            select(
+                TokenUsageEventModel.model,
+                func.count(TokenUsageEventModel.id).label("event_count"),
+                model_total,
+            )
+            .group_by(TokenUsageEventModel.model)
+            .order_by(
+                model_total.desc(),
+                func.lower(TokenUsageEventModel.model),
+            )
+        )
+
+        with self.session_factory() as session:
+            totals_row = session.execute(self._totals_statement()).one()
+            tool_rows = session.execute(tool_statement).all()
+            model_rows = session.execute(model_statement).all()
+
+        tool_totals = {
+            TokenUsageTool(row.tool): self._totals_from_mapping(row._mapping)
+            for row in tool_rows
+        }
+        return TokenUsageOverview(
+            totals=self._totals_from_mapping(totals_row._mapping),
+            tools=[
+                TokenUsageToolSummary(
+                    tool=usage_tool,
+                    **tool_totals.get(
+                        usage_tool,
+                        TokenUsageTotals(),
+                    ).model_dump(),
+                )
+                for usage_tool in TokenUsageTool
+            ],
+            models=[
+                TokenUsageModelSummary(
+                    model=row.model,
+                    event_count=int(row.event_count),
+                    total_tokens=int(row.total_tokens),
+                )
+                for row in model_rows
+            ],
         )
 
     def summary(
@@ -258,6 +295,33 @@ class TokenUsageService:
     @staticmethod
     def _empty_totals() -> dict[str, int]:
         return {"event_count": 0, **{field: 0 for field in TOKEN_FIELDS}}
+
+    @staticmethod
+    def _aggregate_columns() -> list[object]:
+        return [
+            func.count(TokenUsageEventModel.id).label("event_count"),
+            *[
+                func.coalesce(
+                    func.sum(getattr(TokenUsageEventModel, field)),
+                    0,
+                ).label(field)
+                for field in TOKEN_FIELDS
+            ],
+        ]
+
+    @classmethod
+    def _totals_statement(cls):
+        return select(*cls._aggregate_columns())
+
+    @staticmethod
+    def _totals_from_mapping(values) -> TokenUsageTotals:
+        return TokenUsageTotals(
+            event_count=int(values["event_count"]),
+            **{
+                field: int(values[field])
+                for field in TOKEN_FIELDS
+            },
+        )
 
     @staticmethod
     def _add_event(

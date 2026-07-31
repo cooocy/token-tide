@@ -38,6 +38,12 @@ export interface TokenUsageSummary {
   models: TokenUsageModelSummary[];
 }
 
+export interface TokenUsageOverview {
+  totals: TokenUsageTotals;
+  tools: TokenUsageToolSummary[];
+  models: TokenUsageModelSummary[];
+}
+
 export interface TokenUsageSummaryQuery {
   startTime: string;
   endTime: string;
@@ -60,6 +66,10 @@ export function findTokenUsageSummary(
       'timezone-offset-minutes': query.timezoneOffsetMinutes,
     },
   });
+}
+
+export function findTokenUsageOverview(): Promise<TokenUsageOverview> {
+  return client.get<unknown, TokenUsageOverview>('/token-usage/overview');
 }
 
 export function findTokenUsageTotals(

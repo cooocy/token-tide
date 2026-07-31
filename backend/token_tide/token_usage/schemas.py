@@ -92,6 +92,12 @@ class TokenUsageModelSummary(BaseModel):
     total_tokens: int
 
 
+class TokenUsageOverview(BaseModel):
+    totals: TokenUsageTotals
+    tools: list[TokenUsageToolSummary]
+    models: list[TokenUsageModelSummary]
+
+
 class TokenUsageSummary(BaseModel):
     start_time: datetime
     end_time: datetime

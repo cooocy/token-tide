@@ -164,6 +164,7 @@ GET  /balances
 GET  /balances/{provider}/history
 POST /refresh
 POST /refresh/{provider}
+GET  /token-usage/overview
 GET  /token-usage/summary
 GET  /token-usage/totals
 GET  /token-usage/{tool}/checkpoint
@@ -252,9 +253,10 @@ OPENCODE_DATA_DIR
 
 ## 前端
 
-前端提供余额看板、余额历史和 Token 用量查看页。使用量页默认查看最近 7 天，
-可切换今天、30 天、全部历史总计以及 Claude、Codex、OpenCode 单个工具；区间模式的
-每日趋势按浏览器本地日界线聚合，总计模式只显示累计 Token、请求数和 Token 分布。
+前端提供余额看板、余额历史和 Token 用量查看页。使用量页顶部固定展示全部历史的累计
+Token、请求数，以及按工具和按模型分组的用量；下方分析区默认查看最近 7 天，可切换
+今天、30 天以及 Claude、Codex、OpenCode 单个工具。每日趋势按浏览器本地日界线聚合，
+筛选只影响分析区，不改变顶部累计概览。
 
 ```bash
 cd frontend
