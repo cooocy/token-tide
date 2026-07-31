@@ -278,21 +278,49 @@ export default function TokenUsagePage() {
             >
               <p className="section-kicker">TOTAL TOKENS</p>
               <h2 id="usage-total-title">累计总用量</h2>
-              <div className="usage-total-metric-row">
-                <strong
-                  aria-label={`${formatTokenCount(
-                    overview.totals.total_tokens,
-                  )} Tokens`}
-                >
-                  {formatCompactTokenCount(overview.totals.total_tokens)}
-                </strong>
-                <div className="usage-total-meta">
-                  <span className="usage-total-exact">
-                    {formatTokenCount(overview.totals.total_tokens)} Tokens
-                  </span>
-                  <span className="usage-request-count">
-                    {formatTokenCount(overview.totals.event_count)} 次请求
-                  </span>
+              <div className="usage-total-body">
+                <div className="usage-total-metric-row">
+                  <strong
+                    aria-label={`${formatTokenCount(
+                      overview.totals.total_tokens,
+                    )} Tokens`}
+                  >
+                    {formatCompactTokenCount(overview.totals.total_tokens)}
+                  </strong>
+                  <div className="usage-total-meta">
+                    <span className="usage-total-exact">
+                      {formatTokenCount(overview.totals.total_tokens)} Tokens
+                    </span>
+                    <span className="usage-request-count">
+                      {formatTokenCount(overview.totals.event_count)} 次请求
+                    </span>
+                  </div>
+                </div>
+
+                <div className="usage-lifetime-breakdown">
+                  <p>累计明细</p>
+                  <dl>
+                    {TOKEN_DETAILS.map((item) => (
+                      <div
+                        className={`is-${item.prominence}`}
+                        key={item.field}
+                      >
+                        <dt>{item.label}</dt>
+                        <dd
+                          aria-label={`${
+                            formatTokenCount(overview.totals[item.field])
+                          } Tokens`}
+                          title={formatTokenCount(
+                            overview.totals[item.field],
+                          )}
+                        >
+                          {formatCompactTokenCount(
+                            overview.totals[item.field],
+                          )}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
                 </div>
               </div>
             </section>

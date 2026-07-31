@@ -1674,6 +1674,14 @@ svg {
 
 .usage-total-metric-row {
   min-width: 0;
+}
+
+.usage-total-body {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(116px, 0.72fr) minmax(0, 1.28fr);
+  align-items: end;
+  gap: 18px;
   margin-top: 14px;
 }
 
@@ -1717,6 +1725,60 @@ svg {
   font-family: var(--data-font);
   font-size: 0.6rem;
   font-variant-numeric: tabular-nums;
+}
+
+.usage-lifetime-breakdown {
+  min-width: 0;
+  padding-left: 18px;
+  border-left: 1px solid rgba(168, 207, 203, 0.16);
+}
+
+.usage-lifetime-breakdown > p {
+  margin: 0 0 9px;
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+
+.usage-lifetime-breakdown dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px 12px;
+  margin: 0;
+}
+
+.usage-lifetime-breakdown dl > div {
+  min-width: 0;
+}
+
+.usage-lifetime-breakdown dl > div:last-child {
+  grid-column: 1 / -1;
+}
+
+.usage-lifetime-breakdown dt {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.55rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-lifetime-breakdown dd {
+  margin: 3px 0 0;
+  overflow: hidden;
+  color: var(--mist);
+  font-family: var(--data-font);
+  font-size: 0.63rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-lifetime-breakdown .is-primary dd {
+  color: var(--foam);
+  font-size: 0.72rem;
+  font-weight: 650;
 }
 
 .usage-distribution-card {
@@ -1891,6 +1953,20 @@ svg {
 }
 
 @media (max-width: 420px) {
+  .usage-total-reading {
+    padding-right: 18px;
+    padding-left: 20px;
+  }
+
+  .usage-total-body {
+    grid-template-columns: minmax(108px, 0.72fr) minmax(0, 1.28fr);
+    gap: 14px;
+  }
+
+  .usage-lifetime-breakdown {
+    padding-left: 14px;
+  }
+
   .usage-distribution-card {
     padding-right: 16px;
     padding-left: 16px;
@@ -1919,6 +1995,20 @@ svg {
   }
 }
 
+@media (max-width: 350px) {
+  .usage-total-body {
+    display: block;
+  }
+
+  .usage-lifetime-breakdown {
+    margin-top: 16px;
+    padding-top: 14px;
+    padding-left: 0;
+    border-top: 1px solid rgba(168, 207, 203, 0.16);
+    border-left: 0;
+  }
+}
+
 @media (min-width: 840px) {
   .usage-overview-skeleton,
   .usage-overview-grid {
@@ -1932,6 +2022,22 @@ svg {
 
   .usage-total-metric-row > strong {
     font-size: clamp(3.1rem, 5.7vw, 4.7rem);
+  }
+
+  .usage-total-body {
+    display: block;
+  }
+
+  .usage-lifetime-breakdown {
+    margin-top: 17px;
+    padding-top: 14px;
+    padding-left: 0;
+    border-top: 1px solid rgba(168, 207, 203, 0.16);
+    border-left: 0;
+  }
+
+  .usage-lifetime-breakdown > p {
+    display: none;
   }
 
   .usage-distribution-body {
