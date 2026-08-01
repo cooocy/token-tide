@@ -46,13 +46,13 @@ const TOOL_META: Record<TokenUsageTool, { label: string; color: string }> = {
   pi: { label: 'Pi', color: '#e47f96' },
 };
 const MODEL_COLORS = [
-  '#32d6c5',
-  '#899cff',
-  '#dca36a',
-  '#e47f96',
-  '#67b9e8',
+  '#c4a7ff',
+  '#b8e45c',
+  '#ffd166',
+  '#4cc9f0',
+  '#ff6b6b',
 ] as const;
-const OTHER_MODEL_COLOR = '#789b9a';
+const OTHER_MODEL_COLOR = '#65757c';
 const TOKEN_DETAILS = [
   { field: 'input_tokens', label: '输入', prominence: 'primary' },
   { field: 'output_tokens', label: '输出', prominence: 'primary' },
@@ -200,6 +200,8 @@ export default function TokenUsagePage() {
   const [summaryReloadKey, setSummaryReloadKey] = useState(0);
   const overviewRequestId = useRef(0);
   const summaryRequestId = useRef(0);
+  const toolSegmentsRef = useRef<HTMLDivElement | null>(null);
+  const activeToolButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const loadOverview = useCallback(async (): Promise<void> => {
     const currentRequestId = overviewRequestId.current + 1;
@@ -265,6 +267,38 @@ export default function TokenUsagePage() {
       summaryRequestId.current += 1;
     };
   }, [loadSummary, summaryReloadKey]);
+
+  useEffect(() => {
+    const container = toolSegmentsRef.current;
+    const activeButton = activeToolButtonRef.current;
+    if (
+      !container
+      || !activeButton
+      || !window.matchMedia('(max-width: 420px)').matches
+    ) {
+      return;
+    }
+
+    const containerBounds = container.getBoundingClientRect();
+    const buttonBounds = activeButton.getBoundingClientRect();
+    if (
+      buttonBounds.left >= containerBounds.left
+      && buttonBounds.right <= containerBounds.right
+    ) {
+      return;
+    }
+
+    const prefersReducedMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches;
+    container.scrollTo({
+      left: container.scrollLeft
+        + buttonBounds.left
+        - containerBounds.left
+        - (container.clientWidth - buttonBounds.width) / 2,
+      behavior: prefersReducedMotion ? 'auto' : 'smooth',
+    });
+  }, [tool]);
 
   const updateFilter = (
     nextPeriod: UsagePeriod = period,
@@ -392,13 +426,17 @@ export default function TokenUsagePage() {
           </div>
           <div className="usage-filter-row">
             <span>工具</span>
-            <div className="usage-segments is-grid">
+            <div
+              className="usage-segments is-grid is-tools"
+              ref={toolSegmentsRef}
+            >
               {TOOLS.map((item) => (
                 <button
                   type="button"
                   className={item.value === tool ? 'is-active' : ''}
                   aria-pressed={item.value === tool}
                   onClick={() => updateFilter(period, item.value)}
+                  ref={item.value === tool ? activeToolButtonRef : undefined}
                   key={item.value}
                 >
                   {item.label}

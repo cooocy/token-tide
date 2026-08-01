@@ -1104,6 +1104,7 @@ svg {
 
 .usage-page {
   width: min(100% - 32px, 900px);
+  --usage-card-radius: 20px;
 }
 
 .usage-filter-panel {
@@ -1231,7 +1232,7 @@ svg {
 
 .usage-panel {
   border: 1px solid var(--line);
-  border-radius: 20px;
+  border-radius: var(--usage-card-radius);
   background: var(--panel);
 }
 
@@ -1564,7 +1565,7 @@ svg {
   margin-top: 20px;
   padding: 1px;
   overflow: hidden;
-  border-radius: 24px;
+  border-radius: var(--usage-card-radius);
   background: var(--line);
 }
 
@@ -1590,7 +1591,7 @@ svg {
   margin-top: 20px;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: var(--usage-card-radius);
   background: var(--line);
 }
 
@@ -1883,7 +1884,7 @@ svg {
   margin-top: 20px;
   padding: 14px;
   border: 1px solid var(--line);
-  border-radius: 17px;
+  border-radius: var(--usage-card-radius);
   background: rgba(10, 34, 43, 0.62);
 }
 
@@ -1901,7 +1902,7 @@ svg {
 .usage-analysis .usage-period-reading {
   margin: 30px 0 28px;
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: var(--usage-card-radius);
 }
 
 .usage-analysis > .usage-skeleton {
@@ -1909,6 +1910,32 @@ svg {
 }
 
 @media (max-width: 420px) {
+  .usage-analysis .usage-segments.is-grid.is-tools {
+    display: flex;
+    width: calc(100% + 8px);
+    max-width: none;
+    margin: -4px;
+    padding: 4px;
+    overflow-x: auto;
+    gap: 6px;
+    overscroll-behavior-inline: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .usage-analysis .usage-segments.is-grid.is-tools::-webkit-scrollbar {
+    display: none;
+  }
+
+  .usage-analysis .usage-segments.is-grid.is-tools button {
+    min-width: 58px;
+    flex: 0 0 auto;
+    padding-right: 13px;
+    padding-left: 13px;
+    scroll-snap-align: center;
+  }
+
   .usage-total-reading {
     padding-right: 18px;
     padding-left: 20px;
