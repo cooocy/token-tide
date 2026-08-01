@@ -8,6 +8,7 @@ class TokenUsageTool(StrEnum):
     CLAUDE = "claude"
     CODEX = "codex"
     OPENCODE = "opencode"
+    PI = "pi"
 
 
 @dataclass(frozen=True)

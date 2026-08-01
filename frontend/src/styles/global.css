@@ -1156,7 +1156,7 @@ svg {
   display: grid;
   width: 100%;
   max-width: 420px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(62px, 1fr));
 }
 
 .usage-segments.is-grid.is-periods {
@@ -1296,6 +1296,10 @@ svg {
   color: #9aabff;
 }
 
+.usage-day-tools .is-pi {
+  color: #e47f96;
+}
+
 .usage-tide-plot {
   position: relative;
   display: grid;
@@ -1384,6 +1388,10 @@ svg {
   background: #899cff;
 }
 
+.usage-day-segment.is-pi {
+  background: #e47f96;
+}
+
 .usage-day-label {
   position: absolute;
   top: calc(100% + 8px);
@@ -1432,6 +1440,10 @@ svg {
 
 .usage-tool-legend .is-opencode {
   color: #9aabff;
+}
+
+.usage-tool-legend .is-pi {
+  color: #e47f96;
 }
 
 .usage-model-panel {

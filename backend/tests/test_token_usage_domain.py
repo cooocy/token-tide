@@ -15,6 +15,7 @@ def test_token_usage_tool_values_match_local_collectors() -> None:
         "claude",
         "codex",
         "opencode",
+        "pi",
     ]
 
 
@@ -48,13 +49,13 @@ def test_token_usage_event_records_tool_and_reporting_time() -> None:
 
     event = TokenUsageEvent(
         source_event_id="event-1",
-        tool=TokenUsageTool.OPENCODE,
+        tool=TokenUsageTool.PI,
         occurred_at=occurred_at,
         reported_at=reported_at,
         model="glm-5",
     )
 
-    assert event.tool is TokenUsageTool.OPENCODE
+    assert event.tool is TokenUsageTool.PI
     assert event.occurred_at is occurred_at
     assert event.reported_at is reported_at
 

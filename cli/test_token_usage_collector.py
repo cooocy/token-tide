@@ -13,6 +13,7 @@ from cli.token_usage_collector import (
     scan_claude,
     scan_codex,
     scan_opencode,
+    scan_pi,
     sync_tool,
 )
 
@@ -220,6 +221,169 @@ class TokenUsageCollectorTest(unittest.TestCase):
                 updated.events[0]["source_event_id"],
             )
 
+    def test_pi_collects_all_usage_types_and_deduplicates_cloned_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            sessions = Path(temporary)
+            entries = [
+                {
+                    "type": "session",
+                    "version": 3,
+                    "id": "session-1",
+                    "timestamp": "2026-08-01T01:00:00Z",
+                    "cwd": "/project",
+                },
+                {
+                    "type": "model_change",
+                    "id": "model-1",
+                    "parentId": None,
+                    "timestamp": "2026-08-01T01:00:01Z",
+                    "provider": "anthropic",
+                    "modelId": "claude-sonnet-4",
+                },
+                self.pi_assistant("assistant-1"),
+                {
+                    "type": "compaction",
+                    "id": "compaction-1",
+                    "parentId": "assistant-1",
+                    "timestamp": "2026-08-01T01:02:00Z",
+                    "summary": "summary",
+                    "usage": self.pi_usage(2, 1, 0, 0),
+                },
+                {
+                    "type": "message",
+                    "id": "tool-1",
+                    "parentId": "compaction-1",
+                    "timestamp": "2026-08-01T01:03:00Z",
+                    "message": {
+                        "role": "toolResult",
+                        "toolCallId": "call-1",
+                        "toolName": "subagent",
+                        "content": [],
+                        "isError": False,
+                        "usage": self.pi_usage(3, 2, 0, 0),
+                    },
+                },
+                {
+                    "type": "message",
+                    "id": "tool-2",
+                    "parentId": "tool-1",
+                    "timestamp": "2026-08-01T01:04:00Z",
+                    "message": {
+                        "role": "toolResult",
+                        "toolCallId": "call-2",
+                        "toolName": "subagent",
+                        "content": [],
+                        "isError": False,
+                        "details": {"provider": "openai", "model": "gpt-5"},
+                        "usage": self.pi_usage(4, 2, 0, 0),
+                    },
+                },
+            ]
+            original = sessions / "original.jsonl"
+            clone = sessions / "clone.jsonl"
+            original.write_text("".join(json_line(entry) for entry in entries), encoding="utf-8")
+            cloned_entries = [
+                {**entries[0], "id": "session-2", "parentSession": str(original)},
+                *entries[1:],
+            ]
+            clone.write_text(
+                "".join(json_line(entry) for entry in cloned_entries),
+                encoding="utf-8",
+            )
+
+            with patch.dict(
+                os.environ,
+                {"PI_CODING_AGENT_SESSION_DIR": str(sessions)},
+            ):
+                result = scan_pi({})
+
+            self.assertEqual(len(result.events), 4)
+            assistant = next(
+                event
+                for event in result.events
+                if event["model"] == "claude-sonnet-4"
+                and event["total_tokens"] == 20
+            )
+            self.assertEqual(assistant["provider"], "anthropic")
+            self.assertEqual(assistant["input_tokens"], 10)
+            self.assertEqual(assistant["output_tokens"], 5)
+            self.assertEqual(assistant["cache_creation_tokens"], 2)
+            self.assertEqual(assistant["cache_read_tokens"], 3)
+            self.assertEqual(assistant["total_tokens"], 20)
+            events = {event["model"]: event for event in result.events}
+            self.assertEqual(events["pi-internal"]["total_tokens"], 5)
+            self.assertEqual(events["gpt-5"]["provider"], "openai")
+            summary_events = [
+                event
+                for event in result.events
+                if event["model"] == "claude-sonnet-4"
+                and event["total_tokens"] == 3
+            ]
+            self.assertEqual(len(summary_events), 1)
+
+    def test_pi_resumes_offset_and_uses_settings_session_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            agent_dir = Path(temporary) / "agent"
+            sessions = agent_dir / "custom-sessions" / "project"
+            sessions.mkdir(parents=True)
+            (agent_dir / "settings.json").write_text(
+                json.dumps({"sessionDir": "custom-sessions"}),
+                encoding="utf-8",
+            )
+            log = sessions / "session.jsonl"
+            legacy_assistant = self.pi_assistant("assistant-1")
+            legacy_assistant.pop("id")
+            legacy_assistant.pop("parentId")
+            log.write_text(json_line(legacy_assistant), encoding="utf-8")
+
+            with patch.dict(
+                os.environ,
+                {
+                    "PI_CODING_AGENT_DIR": str(agent_dir),
+                    "PI_CODING_AGENT_SESSION_DIR": "",
+                },
+            ):
+                initial = scan_pi({})
+                unchanged = scan_pi(initial.cursor)
+                with log.open("a", encoding="utf-8") as output:
+                    next_assistant = self.pi_assistant("assistant-2")
+                    next_assistant["timestamp"] = "2026-08-01T01:05:00Z"
+                    output.write(json_line(next_assistant))
+                appended = scan_pi(initial.cursor)
+
+            self.assertEqual(len(initial.events), 1)
+            self.assertEqual(unchanged.events, [])
+            self.assertEqual(len(appended.events), 1)
+
+    def test_pi_skips_zero_usage_and_reports_invalid_usage(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            sessions = Path(temporary)
+            zero = self.pi_assistant("assistant-zero")
+            zero["message"]["usage"] = self.pi_usage(0, 0, 0, 0)  # type: ignore[index]
+            invalid = self.pi_assistant("assistant-invalid")
+            invalid["timestamp"] = "2026-08-01T01:06:00Z"
+            invalid["message"]["usage"] = {"input": -1}  # type: ignore[index]
+            (sessions / "session.jsonl").write_text(
+                json_line(zero) + json_line(invalid),
+                encoding="utf-8",
+            )
+
+            stdout = io.StringIO()
+            with (
+                patch.dict(
+                    os.environ,
+                    {"PI_CODING_AGENT_SESSION_DIR": str(sessions)},
+                ),
+                redirect_stdout(stdout),
+            ):
+                result = scan_pi({})
+
+            self.assertEqual(result.events, [])
+            errors = [json.loads(line) for line in stdout.getvalue().splitlines()]
+            self.assertEqual(len(errors), 1)
+            self.assertEqual(errors[0]["tool"], "pi")
+            self.assertNotIn("raw", errors[0])
+
     @staticmethod
     def claude_record(message_id: str, timestamp: str) -> dict[str, object]:
         return {
@@ -269,6 +433,46 @@ class TokenUsageCollectorTest(unittest.TestCase):
                 "reasoning": 0,
                 "total": 10 + output_tokens,
                 "cache": {"write": 0, "read": 0},
+            },
+        }
+
+    @staticmethod
+    def pi_usage(
+        input_tokens: int,
+        output_tokens: int,
+        cache_read: int,
+        cache_write: int,
+    ) -> dict[str, object]:
+        return {
+            "input": input_tokens,
+            "output": output_tokens,
+            "cacheRead": cache_read,
+            "cacheWrite": cache_write,
+            "totalTokens": input_tokens + output_tokens + cache_read + cache_write,
+            "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0,
+            },
+        }
+
+    @classmethod
+    def pi_assistant(cls, entry_id: str) -> dict[str, object]:
+        return {
+            "type": "message",
+            "id": entry_id,
+            "parentId": None,
+            "timestamp": "2026-08-01T01:01:00Z",
+            "message": {
+                "role": "assistant",
+                "content": [],
+                "provider": "anthropic",
+                "model": "claude-sonnet-4",
+                "usage": cls.pi_usage(10, 5, 3, 2),
+                "stopReason": "stop",
+                "timestamp": 1785546060000,
             },
         }
 

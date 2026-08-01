@@ -14,11 +14,12 @@ import {
   formatTokenCount,
 } from '@/lib/display';
 
-const TOOL_ORDER: TokenUsageTool[] = ['opencode', 'codex', 'claude'];
+const TOOL_ORDER: TokenUsageTool[] = ['pi', 'opencode', 'codex', 'claude'];
 const TOOL_NAMES: Record<TokenUsageTool, string> = {
   claude: 'Claude',
   codex: 'Codex',
   opencode: 'OpenCode',
+  pi: 'Pi',
 };
 
 interface UsageTideChartProps {

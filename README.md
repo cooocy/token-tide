@@ -183,7 +183,7 @@ limit        # 默认 100，最大 1000
 Token Usage 汇总接口公开读取，支持：
 
 ```text
-tool                       # 可选：claude、codex 或 opencode
+tool                       # 可选：claude、codex、opencode 或 pi
 start-time                 # 必填，包含时区
 end-time                   # 必填，包含时区；查询区间右侧不包含
 timezone-offset-minutes    # 必填，本地时间相对 UTC 的分钟偏移
@@ -220,7 +220,7 @@ occurred_at
 ## Token Usage 采集器
 
 `cli/token_usage_collector.py` 是独立的单次同步 CLI。它从服务端回查 Claude Code、
-Codex 和 OpenCode 各自的 cursor，增量读取本地日志并批量上报。首次运行会同步全部
+Codex、OpenCode 和 Pi 各自的 cursor，增量读取本地日志并批量上报。首次运行会同步全部
 现存历史：
 
 ```bash
@@ -245,17 +245,30 @@ python3 cli/token_usage_collector.py
 CLAUDE_CONFIG_DIR
 CODEX_HOME
 OPENCODE_DATA_DIR
+PI_CODING_AGENT_DIR
+PI_CODING_AGENT_SESSION_DIR
 ```
 
+Pi 默认从 `~/.pi/agent/sessions/` 递归读取 Session JSONL。目录解析优先使用
+`PI_CODING_AGENT_SESSION_DIR`，其次读取 `PI_CODING_AGENT_DIR/settings.json` 中的
+`sessionDir`，最后使用 `PI_CODING_AGENT_DIR/sessions`。相对 `sessionDir` 按 Pi 配置
+目录解析；仅通过 Pi 的 `--session-dir` 指定自定义目录时，也需要为采集器设置
+`PI_CODING_AGENT_SESSION_DIR`。
+
+Pi 的普通 Assistant、上下文压缩、分支摘要和带 `usage` 的 Tool Result 都计入总量。
+普通响应使用日志内的 Provider/Model，摘要沿用当时的 Session 模型；工具内部调用没有
+明确模型元数据时归入 `pi-internal`，避免错误归给当前模型。Pi fork/clone 复制的历史
+Entry 使用稳定来源 ID 去重，不会重复累计。
+
 采集器完成当前增量后退出，可由 cron 周期执行；不要并发运行多个实例。CLI 不依赖
-后端 wheel，Token Usage 领域也不依赖余额功能。部署本功能前必须更新远端 YAML，并在
-启动新版本前执行 Alembic migration。
+后端 wheel，Token Usage 领域也不依赖余额功能。本次新增 Pi 不增加后端配置项或
+Alembic migration；部署时需要同步更新 Backend、Frontend 和执行采集器的 CLI 文件。
 
 ## 前端
 
 前端提供余额看板、余额历史和 Token 用量查看页。使用量页顶部固定展示全部历史的累计
 Token、请求数，以及按工具和按模型分组的用量；下方分析区默认查看最近 7 天，可切换
-今天、30 天以及 Claude、Codex、OpenCode 单个工具。每日趋势按浏览器本地日界线聚合，
+今天、30 天以及 Claude、Codex、OpenCode、Pi 单个工具。每日趋势按浏览器本地日界线聚合，
 筛选只影响分析区，不改变顶部累计概览。
 
 ```bash

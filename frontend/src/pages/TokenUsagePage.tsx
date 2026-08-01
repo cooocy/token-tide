@@ -37,11 +37,13 @@ const TOOLS: { value: ToolFilter; label: string }[] = [
   { value: 'claude', label: 'Claude' },
   { value: 'codex', label: 'Codex' },
   { value: 'opencode', label: 'OpenCode' },
+  { value: 'pi', label: 'Pi' },
 ];
 const TOOL_META: Record<TokenUsageTool, { label: string; color: string }> = {
   claude: { label: 'Claude', color: '#dca36a' },
   codex: { label: 'Codex', color: '#32d6c5' },
   opencode: { label: 'OpenCode', color: '#899cff' },
+  pi: { label: 'Pi', color: '#e47f96' },
 };
 const MODEL_COLORS = [
   '#32d6c5',

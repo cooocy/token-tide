@@ -190,11 +190,11 @@ def test_totals_filter_tool_and_return_zero_for_empty_result(
         "total_tokens": 0,
     }
     usage_service.ingest(
-        TokenUsageTool.CODEX,
+        TokenUsageTool.PI,
         TokenUsageBatchInput(events=[event()], next_cursor={"version": 1}),
     )
 
-    assert usage_service.totals(TokenUsageTool.CODEX).total_tokens == 15
+    assert usage_service.totals(TokenUsageTool.PI).total_tokens == 15
     assert usage_service.totals(TokenUsageTool.CLAUDE).total_tokens == 0
 
 
@@ -252,6 +252,7 @@ def test_overview_aggregates_all_history_by_tool_and_model(
         TokenUsageTool.CLAUDE: (1, 45),
         TokenUsageTool.CODEX: (2, 150),
         TokenUsageTool.OPENCODE: (0, 0),
+        TokenUsageTool.PI: (0, 0),
     }
     assert [
         (item.model, item.event_count, item.total_tokens)
@@ -339,6 +340,7 @@ def test_summary_aggregates_tools_models_and_local_calendar_days(
         TokenUsageTool.CLAUDE: 45,
         TokenUsageTool.CODEX: 100,
         TokenUsageTool.OPENCODE: 0,
+        TokenUsageTool.PI: 0,
     }
 
 

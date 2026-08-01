@@ -12,6 +12,7 @@
 #   --timeout-seconds 15
 #   -v / --verbose  (show checkpoint, scan and per-batch details)
 #   CLAUDE_CONFIG_DIR, CODEX_HOME, OPENCODE_DATA_DIR
+#   PI_CODING_AGENT_DIR, PI_CODING_AGENT_SESSION_DIR
 #
 # Example:
 #   TOKEN_TIDE_BASE_URL=https://token-tide.example.com/api \
@@ -38,7 +39,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-TOOLS = ("claude", "codex", "opencode")
+TOOLS = ("claude", "codex", "opencode", "pi")
 MAX_BATCH_SIZE = 500
 CURSOR_VERSION = 1
 SEMVER_PREFIX = re.compile(r"^\d+\.\d+\.\d+")
@@ -540,6 +541,186 @@ def scan_codex(cursor: dict[str, object]) -> ScanResult:
     )
 
 
+def pi_agent_dir() -> Path:
+    configured = os.environ.get("PI_CODING_AGENT_DIR")
+    return expand_path(configured) if configured else Path.home() / ".pi" / "agent"
+
+
+def pi_session_dir() -> Path:
+    configured = os.environ.get("PI_CODING_AGENT_SESSION_DIR")
+    if configured:
+        return expand_path(configured)
+
+    agent_dir = pi_agent_dir()
+    settings_path = agent_dir / "settings.json"
+    if not settings_path.is_file():
+        return agent_dir / "sessions"
+    try:
+        settings = json.loads(settings_path.read_bytes())
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"Unable to read Pi settings {settings_path}: {error}") from error
+    if not isinstance(settings, dict):
+        raise RuntimeError(f"Pi settings must be an object: {settings_path}")
+    session_dir = settings.get("sessionDir")
+    if session_dir is None:
+        return agent_dir / "sessions"
+    if not isinstance(session_dir, str) or not session_dir.strip():
+        raise RuntimeError(f"Pi sessionDir must be a non-empty string: {settings_path}")
+    expanded = Path(os.path.expanduser(session_dir.strip()))
+    if not expanded.is_absolute():
+        expanded = agent_dir / expanded
+    return expanded.resolve()
+
+
+def pi_usage(raw: object) -> dict[str, int]:
+    if not isinstance(raw, dict):
+        raise ValueError("usage must be an object")
+    input_tokens = token_int(raw, "input")
+    output_tokens = token_int(raw, "output")
+    cache_creation = token_int(raw, "cacheWrite")
+    cache_read = token_int(raw, "cacheRead")
+    known = input_tokens + output_tokens + cache_creation + cache_read
+    total = token_int(raw, "totalTokens") or known
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cache_creation_tokens": cache_creation,
+        "cache_read_tokens": cache_read,
+        "total_tokens": total,
+    }
+
+
+def pi_event(
+    raw: dict[str, Any],
+    source: str,
+    position: int,
+    current_provider: str,
+    current_model: str,
+) -> Optional[dict[str, object]]:
+    raw_type = raw.get("type")
+    message = raw.get("message") if raw_type == "message" else None
+    role = message.get("role") if isinstance(message, dict) else None
+    if role == "assistant":
+        usage_raw = message.get("usage")
+        provider = message.get("provider")
+        model = message.get("model")
+    elif role == "toolResult" and isinstance(message, dict) and "usage" in message:
+        usage_raw = message.get("usage")
+        details = message.get("details")
+        details = details if isinstance(details, dict) else {}
+        provider_value = message.get("provider") or details.get("provider")
+        model_value = message.get("model") or details.get("model")
+        provider = provider_value if isinstance(provider_value, str) else ""
+        model = model_value if isinstance(model_value, str) and model_value else "pi-internal"
+    elif raw_type in ("compaction", "branch_summary") and "usage" in raw:
+        usage_raw = raw.get("usage")
+        provider = current_provider
+        model = current_model or "pi-internal"
+    else:
+        return None
+
+    occurred_at = parse_timestamp(raw.get("timestamp"))
+    try:
+        if occurred_at is None:
+            raise ValueError("timestamp must include timezone")
+        if not isinstance(provider, str):
+            raise ValueError("provider must be a string")
+        if not isinstance(model, str) or not model:
+            raise ValueError("model is required")
+        usage = pi_usage(usage_raw)
+        if usage["total_tokens"] == 0:
+            return None
+        message_timestamp = message.get("timestamp") if isinstance(message, dict) else None
+        tool_call_id = message.get("toolCallId") if isinstance(message, dict) else None
+        response_id = message.get("responseId") if isinstance(message, dict) else None
+        return event_value(
+            stable_hash(
+                "pi",
+                raw.get("timestamp"),
+                raw_type,
+                role,
+                message_timestamp,
+                tool_call_id,
+                response_id,
+                raw.get("summary"),
+                provider,
+                model,
+                usage,
+            ),
+            occurred_at,
+            model,
+            provider=provider,
+            **usage,
+        )
+    except (TypeError, ValueError) as error:
+        output_invalid(
+            "pi",
+            source,
+            position,
+            str(error),
+            occurred_at,
+        )
+        return None
+
+
+def scan_pi(cursor: dict[str, object]) -> ScanResult:
+    previous_files = cursor_files(cursor)
+    next_files = dict(previous_files)
+    events: dict[str, dict[str, object]] = {}
+    for file_path in recursive_files(pi_session_dir(), ".jsonl"):
+        key = file_key(file_path)
+        state = previous_files.get(key, {})
+        offset, identity = initial_offset(file_path, state)
+        reset = offset == 0
+        current_provider = "" if reset else str(state.get("provider") or "")
+        current_model = "" if reset else str(state.get("model") or "")
+        lines, next_offset = complete_lines(file_path, offset)
+        for position, raw_bytes in lines:
+            raw = decode_json_line("pi", key, position, raw_bytes)
+            if raw is None:
+                continue
+            raw_type = raw.get("type")
+            if raw_type == "model_change":
+                provider = raw.get("provider")
+                model = raw.get("modelId")
+                if isinstance(provider, str) and provider:
+                    current_provider = provider
+                if isinstance(model, str) and model:
+                    current_model = model
+                continue
+            message = raw.get("message")
+            if (
+                raw_type == "message"
+                and isinstance(message, dict)
+                and message.get("role") == "assistant"
+            ):
+                provider = message.get("provider")
+                model = message.get("model")
+                if isinstance(provider, str) and provider:
+                    current_provider = provider
+                if isinstance(model, str) and model:
+                    current_model = model
+            event = pi_event(
+                raw,
+                key,
+                position,
+                current_provider,
+                current_model,
+            )
+            if event is not None:
+                events[str(event["source_event_id"])] = event
+        next_files[key] = {
+            "identity": identity,
+            "offset": next_offset,
+            "provider": current_provider,
+            "model": current_model,
+        }
+    return ScanResult(
+        events=list(events.values()),
+        cursor={"version": CURSOR_VERSION, "files": next_files},
+    )
+
+
 def opencode_paths() -> list[Path]:
     configured = os.environ.get("OPENCODE_DATA_DIR")
     if configured is not None:
@@ -880,7 +1061,7 @@ def sync_tool(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Incrementally upload Claude, Codex and OpenCode token usage",
+        description="Incrementally upload Claude, Codex, OpenCode and Pi token usage",
     )
     parser.add_argument(
         "--base-url",
@@ -918,6 +1099,7 @@ def main() -> None:
         "claude": scan_claude,
         "codex": scan_codex,
         "opencode": scan_opencode,
+        "pi": scan_pi,
     }
     failures: list[str] = []
     results: list[SyncResult] = []

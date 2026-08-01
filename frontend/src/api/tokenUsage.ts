@@ -1,6 +1,6 @@
 import client from '@/api/client';
 
-export type TokenUsageTool = 'claude' | 'codex' | 'opencode';
+export type TokenUsageTool = 'claude' | 'codex' | 'opencode' | 'pi';
 
 export interface TokenUsageTotals {
   event_count: number;
