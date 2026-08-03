@@ -55,13 +55,7 @@ const USAGE_VIEWS: {
   { value: 'total', kicker: 'ALL-TIME', label: '总计' },
   { value: 'analysis', kicker: 'ANALYSIS', label: '用量分析' },
 ];
-const MODEL_COLORS = [
-  '#c4a7ff',
-  '#b8e45c',
-  '#ffd166',
-  '#4cc9f0',
-  '#ff6b6b',
-] as const;
+const LEADING_MODEL_COUNT = 5;
 const OTHER_MODEL_COLOR = '#65757c';
 const TOKEN_DETAILS = [
   { field: 'input_tokens', label: '输入', prominence: 'primary' },
@@ -124,19 +118,33 @@ function toolDistribution(
   }));
 }
 
+function modelColor(model: string): string {
+  const normalizedModel = model.trim().toLocaleLowerCase('en-US');
+  let hash = 2166136261;
+  for (let index = 0; index < normalizedModel.length; index += 1) {
+    hash ^= normalizedModel.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  const unsignedHash = hash >>> 0;
+  const hue = unsignedHash % 360;
+  const saturation = 64 + ((unsignedHash >>> 8) % 3) * 4;
+  const lightness = 62 + ((unsignedHash >>> 16) % 3) * 3;
+  return `hsl(${hue} ${saturation}% ${lightness}%)`;
+}
+
 function modelDistribution(
   usage: Pick<TokenUsageOverview, 'models'>,
 ): UsageDistributionItem[] {
   const models = usage.models.filter((item) => item.total_tokens > 0);
-  const leading = models.slice(0, MODEL_COLORS.length);
-  const items: UsageDistributionItem[] = leading.map((item, index) => ({
+  const leading = models.slice(0, LEADING_MODEL_COUNT);
+  const items: UsageDistributionItem[] = leading.map((item) => ({
     id: item.model,
     label: item.model,
     value: item.total_tokens,
-    color: MODEL_COLORS[index],
+    color: modelColor(item.model),
   }));
   const otherValue = models
-    .slice(MODEL_COLORS.length)
+    .slice(LEADING_MODEL_COUNT)
     .reduce((sum, item) => sum + item.total_tokens, 0);
   if (otherValue > 0) {
     items.push({
