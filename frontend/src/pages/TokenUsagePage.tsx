@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   findTokenUsageOverview,
   findTokenUsageSummary,
@@ -21,6 +21,7 @@ import {
 
 type UsagePeriod = 'today' | '7d' | '30d';
 type ToolFilter = 'all' | TokenUsageTool;
+type UsageView = 'today' | 'total' | 'analysis';
 
 const PERIODS: { value: UsagePeriod; label: string }[] = [
   { value: 'today', label: '今天' },
@@ -45,6 +46,15 @@ const TOOL_META: Record<TokenUsageTool, { label: string; color: string }> = {
   opencode: { label: 'OpenCode', color: '#899cff' },
   pi: { label: 'Pi', color: '#e47f96' },
 };
+const USAGE_VIEWS: {
+  value: UsageView;
+  kicker: string;
+  label: string;
+}[] = [
+  { value: 'today', kicker: 'TODAY', label: '今日' },
+  { value: 'total', kicker: 'ALL-TIME', label: '总计' },
+  { value: 'analysis', kicker: 'ANALYSIS', label: '用量分析' },
+];
 const MODEL_COLORS = [
   '#c4a7ff',
   '#b8e45c',
@@ -67,6 +77,23 @@ function isPeriod(value: string | null): value is UsagePeriod {
 
 function isTool(value: string | null): value is ToolFilter {
   return TOOLS.some((tool) => tool.value === value);
+}
+
+function isUsageView(value: string | null): value is UsageView {
+  return USAGE_VIEWS.some((view) => view.value === value);
+}
+
+function resolveUsageView(
+  requestedView: string | null,
+  hasAnalysisFilters: boolean,
+): UsageView {
+  if (isUsageView(requestedView)) {
+    return requestedView;
+  }
+  if (requestedView === null && hasAnalysisFilters) {
+    return 'analysis';
+  }
+  return 'today';
 }
 
 function queryRange(period: UsagePeriod): {
@@ -264,6 +291,11 @@ function UsageTokenReading({
 
 export default function TokenUsagePage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const requestedView = searchParams.get('view');
+  const view = resolveUsageView(
+    requestedView,
+    searchParams.has('period') || searchParams.has('tool'),
+  );
   const period = isPeriod(searchParams.get('period'))
     ? searchParams.get('period') as UsagePeriod
     : '7d';
@@ -275,20 +307,19 @@ export default function TokenUsagePage() {
   );
   const [overview, setOverview] = useState<TokenUsageOverview | null>(null);
   const [summary, setSummary] = useState<TokenUsageSummary | null>(null);
-  const [todayLoading, setTodayLoading] = useState(true);
-  const [overviewLoading, setOverviewLoading] = useState(true);
-  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [todayLoading, setTodayLoading] = useState(false);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
   const [todayError, setTodayError] = useState<string | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
-  const [todayReloadKey, setTodayReloadKey] = useState(0);
-  const [overviewReloadKey, setOverviewReloadKey] = useState(0);
-  const [summaryReloadKey, setSummaryReloadKey] = useState(0);
   const todayRequestId = useRef(0);
   const overviewRequestId = useRef(0);
   const summaryRequestId = useRef(0);
+  const summaryDataKey = useRef<string | null>(null);
   const toolSegmentsRef = useRef<HTMLDivElement | null>(null);
   const activeToolButtonRef = useRef<HTMLButtonElement | null>(null);
+  const summaryQueryKey = `${period}:${tool}`;
 
   const loadTodaySummary = useCallback(async (): Promise<void> => {
     const currentRequestId = todayRequestId.current + 1;
@@ -341,8 +372,10 @@ export default function TokenUsagePage() {
   const loadSummary = useCallback(async (): Promise<void> => {
     const currentRequestId = summaryRequestId.current + 1;
     summaryRequestId.current = currentRequestId;
+    summaryDataKey.current = summaryQueryKey;
     setSummaryLoading(true);
     setSummaryError(null);
+    setSummary(null);
     try {
       const data = await findTokenUsageSummary({
         ...queryRange(period),
@@ -363,28 +396,54 @@ export default function TokenUsagePage() {
         setSummaryLoading(false);
       }
     }
-  }, [period, tool]);
+  }, [period, summaryQueryKey, tool]);
 
   useEffect(() => {
+    if (requestedView === view) {
+      return;
+    }
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.set('view', view);
+    setSearchParams(nextSearchParams, { replace: true });
+  }, [requestedView, searchParams, setSearchParams, view]);
+
+  useEffect(() => {
+    if (view !== 'today' || todaySummary || todayError || todayLoading) {
+      return;
+    }
     void loadTodaySummary();
+  }, [loadTodaySummary, todayError, todayLoading, todaySummary, view]);
+
+  useEffect(() => {
+    if (view !== 'total' || overview || overviewError || overviewLoading) {
+      return;
+    }
+    void loadOverview();
+  }, [loadOverview, overview, overviewError, overviewLoading, view]);
+
+  useEffect(() => {
+    const hasCurrentState = summaryDataKey.current === summaryQueryKey
+      && Boolean(summary || summaryError || summaryLoading);
+    if (view !== 'analysis' || hasCurrentState) {
+      return;
+    }
+    void loadSummary();
+  }, [
+    loadSummary,
+    summary,
+    summaryError,
+    summaryLoading,
+    summaryQueryKey,
+    view,
+  ]);
+
+  useEffect(() => {
     return () => {
       todayRequestId.current += 1;
-    };
-  }, [loadTodaySummary, todayReloadKey]);
-
-  useEffect(() => {
-    void loadOverview();
-    return () => {
       overviewRequestId.current += 1;
-    };
-  }, [loadOverview, overviewReloadKey]);
-
-  useEffect(() => {
-    void loadSummary();
-    return () => {
       summaryRequestId.current += 1;
     };
-  }, [loadSummary, summaryReloadKey]);
+  }, []);
 
   useEffect(() => {
     const container = toolSegmentsRef.current;
@@ -416,7 +475,7 @@ export default function TokenUsagePage() {
         - (container.clientWidth - buttonBounds.width) / 2,
       behavior: prefersReducedMotion ? 'auto' : 'smooth',
     });
-  }, [tool]);
+  }, [tool, view]);
 
   const updateFilter = (
     nextPeriod: UsagePeriod = period,
@@ -425,10 +484,22 @@ export default function TokenUsagePage() {
     if (nextPeriod === period && nextTool === tool) {
       return;
     }
-    setSummaryLoading(true);
+    summaryRequestId.current += 1;
+    summaryDataKey.current = null;
+    setSummaryLoading(false);
     setSummaryError(null);
     setSummary(null);
-    setSearchParams({ period: nextPeriod, tool: nextTool });
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.set('view', 'analysis');
+    nextSearchParams.set('period', nextPeriod);
+    nextSearchParams.set('tool', nextTool);
+    setSearchParams(nextSearchParams);
+  };
+
+  const viewHref = (nextView: UsageView): string => {
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.set('view', nextView);
+    return `/usage?${nextSearchParams.toString()}`;
   };
 
   const toolItems = useMemo(
@@ -445,263 +516,297 @@ export default function TokenUsagePage() {
   const usedModelCount = overview?.models.filter(
     (item) => item.total_tokens > 0,
   ).length ?? 0;
+  const displayedSummary = summaryDataKey.current === summaryQueryKey
+    ? summary
+    : null;
+  const displayedSummaryError = summaryDataKey.current === summaryQueryKey
+    ? summaryError
+    : null;
   const largestModelTotal = Math.max(
-    ...(summary?.models.map((model) => model.total_tokens) ?? []),
+    ...(displayedSummary?.models.map((model) => model.total_tokens) ?? []),
     1,
   );
+  const activeLoading = view === 'today'
+    ? todayLoading || (!todaySummary && !todayError)
+    : view === 'total'
+      ? overviewLoading || (!overview && !overviewError)
+      : summaryLoading || (!displayedSummary && !displayedSummaryError);
 
   return (
     <main
       className="app-shell usage-page"
-      aria-busy={todayLoading || overviewLoading || summaryLoading}
+      aria-busy={activeLoading}
     >
       <ProductHeader />
       <ProductNavigation />
 
-      <section className="usage-today" aria-labelledby="usage-title">
-        <div className="section-heading usage-today-heading">
-          <div>
-            <p className="section-kicker">TODAY</p>
-            <h1 id="usage-title">今日用量</h1>
-          </div>
-        </div>
-
-        <div className="message-stack usage-message" aria-live="polite">
-          {todayError && (
-            <div className="inline-message is-error" role="alert">
-              <span>{todayError}</span>
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => setTodayReloadKey((value) => value + 1)}
-              >
-                重试
-              </button>
-            </div>
-          )}
-        </div>
-
-        {todayLoading && !todaySummary && (
-          <div className="usage-today-skeleton" aria-label="正在读取今日用量">
-            <span className="skeleton-line is-hero" />
-            <span className="skeleton-line" />
-            <span className="skeleton-line is-short" />
-          </div>
-        )}
-
-        {todaySummary && <TodayUsageSnapshot summary={todaySummary} />}
-      </section>
-
-      <section className="usage-hero" aria-labelledby="usage-overview-title">
-        <div className="section-heading usage-overview-heading">
-          <div>
-            <p className="section-kicker">ALL-TIME</p>
-            <h2 id="usage-overview-title">总计</h2>
-          </div>
-        </div>
-
-        <div className="message-stack usage-message" aria-live="polite">
-          {overviewError && (
-            <div className="inline-message is-error" role="alert">
-              <span>{overviewError}</span>
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => setOverviewReloadKey((value) => value + 1)}
-              >
-                重试
-              </button>
-            </div>
-          )}
-        </div>
-
-        {overviewLoading && !overview && (
-          <div className="usage-overview-skeleton" aria-label="正在读取累计用量">
-            <span className="skeleton-line is-hero" />
-            <span className="skeleton-chart" />
-            <span className="skeleton-chart" />
-          </div>
-        )}
-
-        {overview && (
-          <div className="usage-overview-grid">
-            <UsageTokenReading
-              detailsLabel="累计明细"
-              kicker="TOKEN BREAKDOWN"
-              title="Tokens 分布"
-              titleId="usage-total-title"
-              totals={overview.totals}
-            />
-
-            <UsageDistributionChart
-              kicker="TOOL SHARE"
-              title="按工具"
-              items={toolItems}
-              centerValue={formatTokenCount(usedToolCount)}
-              centerLabel="个工具"
-            />
-            <UsageDistributionChart
-              kicker="MODEL SHARE"
-              title="按模型"
-              items={modelItems}
-              centerValue={formatTokenCount(usedModelCount)}
-              centerLabel="个模型"
-            />
-          </div>
-        )}
-      </section>
-
-      <section className="usage-analysis" aria-labelledby="usage-analysis-title">
-        <div className="section-heading usage-analysis-heading">
-          <div>
-            <p className="section-kicker">FILTERED ANALYSIS</p>
-            <h2 id="usage-analysis-title">用量分析</h2>
-          </div>
-        </div>
-
-        <div className="usage-filter-panel" aria-label="使用量筛选">
-          <div className="usage-filter-row">
-            <span>时间</span>
-            <div className="usage-segments is-grid is-periods">
-              {PERIODS.map((item) => (
-                <button
-                  type="button"
-                  className={item.value === period ? 'is-active' : ''}
-                  aria-pressed={item.value === period}
-                  onClick={() => updateFilter(item.value)}
-                  key={item.value}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="usage-filter-row">
-            <span>工具</span>
-            <div
-              className="usage-segments is-grid is-tools"
-              ref={toolSegmentsRef}
+      <h1 className="usage-page-title">Token 用量</h1>
+      <nav className="usage-view-navigation" aria-label="Token 用量视图">
+        <div className="usage-view-rail">
+          {USAGE_VIEWS.map((item) => (
+            <Link
+              id={`usage-view-${item.value}`}
+              className={item.value === view ? 'is-active' : undefined}
+              aria-current={item.value === view ? 'page' : undefined}
+              to={viewHref(item.value)}
+              key={item.value}
             >
-              {TOOLS.map((item) => (
+              <span>{item.kicker}</span>
+              <strong>{item.label}</strong>
+            </Link>
+          ))}
+        </div>
+      </nav>
+
+      {view === 'today' && (
+        <section
+          className="usage-view-panel usage-today"
+          aria-labelledby="usage-view-today"
+        >
+          {todayError && (
+            <div
+              className="message-stack usage-message"
+              aria-live="polite"
+            >
+              <div className="inline-message is-error" role="alert">
+                <span>{todayError}</span>
                 <button
                   type="button"
-                  className={item.value === tool ? 'is-active' : ''}
-                  aria-pressed={item.value === tool}
-                  onClick={() => updateFilter(period, item.value)}
-                  ref={item.value === tool ? activeToolButtonRef : undefined}
-                  key={item.value}
+                  className="text-button"
+                  onClick={() => void loadTodaySummary()}
                 >
-                  {item.label}
+                  重试
                 </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="message-stack usage-message" aria-live="polite">
-          {summaryError && (
-            <div className="inline-message is-error" role="alert">
-              <span>{summaryError}</span>
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => setSummaryReloadKey((value) => value + 1)}
-              >
-                重试
-              </button>
+              </div>
             </div>
           )}
-        </div>
 
-        {summaryLoading && !summary && (
-          <div className="usage-skeleton" aria-label="正在读取用量分析">
-            <span className="skeleton-line is-short" />
-            <span className="skeleton-chart" />
-          </div>
-        )}
+          {!todaySummary && !todayError && (
+            <div className="usage-today-skeleton" aria-label="正在读取今日用量">
+              <span className="skeleton-line is-hero" />
+              <span className="skeleton-line" />
+              <span className="skeleton-line is-short" />
+            </div>
+          )}
 
-        {summary && (
-          <>
-            <UsageTokenReading
-              className="usage-period-reading"
-              detailsLabel="区间明细"
-              kicker="PERIOD BREAKDOWN"
-              title="区间分布"
-              titleId="usage-breakdown-title"
-              totals={summary.totals}
-            />
+          {todaySummary && <TodayUsageSnapshot summary={todaySummary} />}
+        </section>
+      )}
 
-            {summary.totals.event_count === 0 ? (
-              <section className="empty-panel usage-empty">
-                <span className="empty-symbol" aria-hidden="true">∿</span>
-                <h2>这个时段还没有使用量</h2>
-                <p>切换时间或工具后再看看，采集器上报的数据会显示在这里。</p>
-              </section>
-            ) : (
-              <div className="usage-analysis-grid">
-                <section className="usage-panel usage-tide-panel">
-                  <div className="section-heading">
-                    <div>
-                      <p className="section-kicker">DAILY USAGE</p>
-                      <h2>每日用量</h2>
-                    </div>
-                  </div>
-                  <UsageTideChart days={summary.timeline} />
-                </section>
-
-                <section className="usage-panel usage-model-panel">
-                  <div className="section-heading">
-                    <div>
-                      <p className="section-kicker">MODEL USAGE</p>
-                      <h2>模型用量</h2>
-                    </div>
-                    <span>{summary.models.length} 个模型</span>
-                  </div>
-                  <ol className="usage-model-list">
-                    {summary.models.map((model) => (
-                      <li key={model.model}>
-                        <div className="usage-model-heading">
-                          <span title={model.model}>{model.model}</span>
-                          <strong
-                            aria-label={`${
-                              formatTokenCount(model.total_tokens)
-                            } Tokens`}
-                            title={formatTokenCount(model.total_tokens)}
-                          >
-                            {formatCompactTokenCount(model.total_tokens)}
-                          </strong>
-                        </div>
-                        <div className="usage-model-track" aria-hidden="true">
-                          <span
-                            style={{
-                              width: `${Math.max(
-                                (model.total_tokens / largestModelTotal) * 100,
-                                1.5,
-                              )}%`,
-                            }}
-                          />
-                        </div>
-                        <small>
-                          {formatTokenCount(model.event_count)} 次 · {
-                            summary.totals.total_tokens > 0
-                              ? `${(
-                                (
-                                  model.total_tokens
-                                  / summary.totals.total_tokens
-                                ) * 100
-                              ).toFixed(1)}%`
-                              : '0%'
-                          }
-                        </small>
-                      </li>
-                    ))}
-                  </ol>
-                </section>
+      {view === 'total' && (
+        <section
+          className="usage-view-panel usage-hero"
+          aria-labelledby="usage-view-total"
+        >
+          {overviewError && (
+            <div
+              className="message-stack usage-message"
+              aria-live="polite"
+            >
+              <div className="inline-message is-error" role="alert">
+                <span>{overviewError}</span>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => void loadOverview()}
+                >
+                  重试
+                </button>
               </div>
-            )}
-          </>
-        )}
-      </section>
+            </div>
+          )}
+
+          {!overview && !overviewError && (
+            <div className="usage-overview-skeleton" aria-label="正在读取累计用量">
+              <span className="skeleton-line is-hero" />
+              <span className="skeleton-chart" />
+              <span className="skeleton-chart" />
+            </div>
+          )}
+
+          {overview && (
+            <div className="usage-overview-grid">
+              <UsageTokenReading
+                detailsLabel="累计明细"
+                kicker="TOKEN BREAKDOWN"
+                title="Tokens 分布"
+                titleId="usage-total-title"
+                totals={overview.totals}
+              />
+
+              <UsageDistributionChart
+                kicker="TOOL SHARE"
+                title="按工具"
+                items={toolItems}
+                centerValue={formatTokenCount(usedToolCount)}
+                centerLabel="个工具"
+              />
+              <UsageDistributionChart
+                kicker="MODEL SHARE"
+                title="按模型"
+                items={modelItems}
+                centerValue={formatTokenCount(usedModelCount)}
+                centerLabel="个模型"
+              />
+            </div>
+          )}
+        </section>
+      )}
+
+      {view === 'analysis' && (
+        <section
+          className="usage-view-panel usage-analysis"
+          aria-labelledby="usage-view-analysis"
+        >
+          <div className="usage-filter-panel" aria-label="使用量筛选">
+            <div className="usage-filter-row">
+              <span>时间</span>
+              <div className="usage-segments is-grid is-periods">
+                {PERIODS.map((item) => (
+                  <button
+                    type="button"
+                    className={item.value === period ? 'is-active' : ''}
+                    aria-pressed={item.value === period}
+                    onClick={() => updateFilter(item.value)}
+                    key={item.value}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="usage-filter-row">
+              <span>工具</span>
+              <div
+                className="usage-segments is-grid is-tools"
+                ref={toolSegmentsRef}
+              >
+                {TOOLS.map((item) => (
+                  <button
+                    type="button"
+                    className={item.value === tool ? 'is-active' : ''}
+                    aria-pressed={item.value === tool}
+                    onClick={() => updateFilter(period, item.value)}
+                    ref={item.value === tool ? activeToolButtonRef : undefined}
+                    key={item.value}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {displayedSummaryError && (
+            <div
+              className="message-stack usage-message"
+              aria-live="polite"
+            >
+              <div className="inline-message is-error" role="alert">
+                <span>{displayedSummaryError}</span>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => void loadSummary()}
+                >
+                  重试
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!displayedSummary && !displayedSummaryError && (
+            <div className="usage-skeleton" aria-label="正在读取用量分析">
+              <span className="skeleton-line is-short" />
+              <span className="skeleton-chart" />
+            </div>
+          )}
+
+          {displayedSummary && (
+            <>
+              <UsageTokenReading
+                className="usage-period-reading"
+                detailsLabel="区间明细"
+                kicker="PERIOD BREAKDOWN"
+                title="区间分布"
+                titleId="usage-breakdown-title"
+                totals={displayedSummary.totals}
+              />
+
+              {displayedSummary.totals.event_count === 0 ? (
+                <section className="empty-panel usage-empty">
+                  <span className="empty-symbol" aria-hidden="true">∿</span>
+                  <h2>这个时段还没有使用量</h2>
+                  <p>切换时间或工具后再看看，采集器上报的数据会显示在这里。</p>
+                </section>
+              ) : (
+                <div className="usage-analysis-grid">
+                  <section className="usage-panel usage-tide-panel">
+                    <div className="section-heading">
+                      <div>
+                        <p className="section-kicker">DAILY USAGE</p>
+                        <h2>每日用量</h2>
+                      </div>
+                    </div>
+                    <UsageTideChart days={displayedSummary.timeline} />
+                  </section>
+
+                  <section className="usage-panel usage-model-panel">
+                    <div className="section-heading">
+                      <div>
+                        <p className="section-kicker">MODEL USAGE</p>
+                        <h2>模型用量</h2>
+                      </div>
+                      <span>{displayedSummary.models.length} 个模型</span>
+                    </div>
+                    <ol className="usage-model-list">
+                      {displayedSummary.models.map((model) => (
+                        <li key={model.model}>
+                          <div className="usage-model-heading">
+                            <span title={model.model}>{model.model}</span>
+                            <strong
+                              aria-label={`${
+                                formatTokenCount(model.total_tokens)
+                              } Tokens`}
+                              title={formatTokenCount(model.total_tokens)}
+                            >
+                              {formatCompactTokenCount(model.total_tokens)}
+                            </strong>
+                          </div>
+                          <div className="usage-model-track" aria-hidden="true">
+                            <span
+                              style={{
+                                width: `${Math.max(
+                                  (
+                                    model.total_tokens / largestModelTotal
+                                  ) * 100,
+                                  1.5,
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                          <small>
+                            {formatTokenCount(model.event_count)} 次 · {
+                              displayedSummary.totals.total_tokens > 0
+                                ? `${(
+                                  (
+                                    model.total_tokens
+                                    / displayedSummary.totals.total_tokens
+                                  ) * 100
+                                ).toFixed(1)}%`
+                                : '0%'
+                            }
+                          </small>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      )}
     </main>
   );
 }
