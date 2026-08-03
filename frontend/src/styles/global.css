@@ -1660,7 +1660,7 @@ svg {
 }
 
 .usage-view-panel {
-  padding: 24px 0 36px;
+  padding: 14px 0 36px;
 }
 
 .usage-today-card,
@@ -2156,7 +2156,7 @@ svg {
 }
 
 .usage-analysis {
-  padding-top: 24px;
+  padding-top: 14px;
   border-top: 0;
 }
 
