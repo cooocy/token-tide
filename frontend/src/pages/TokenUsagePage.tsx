@@ -113,8 +113,10 @@ function queryRange(period: UsagePeriod): {
   };
 }
 
-function toolDistribution(overview: TokenUsageOverview): UsageDistributionItem[] {
-  return overview.tools.map((item) => ({
+function toolDistribution(
+  usage: Pick<TokenUsageOverview, 'tools'>,
+): UsageDistributionItem[] {
+  return usage.tools.map((item) => ({
     id: item.tool,
     label: TOOL_META[item.tool].label,
     value: item.total_tokens,
@@ -122,8 +124,10 @@ function toolDistribution(overview: TokenUsageOverview): UsageDistributionItem[]
   }));
 }
 
-function modelDistribution(overview: TokenUsageOverview): UsageDistributionItem[] {
-  const models = overview.models.filter((item) => item.total_tokens > 0);
+function modelDistribution(
+  usage: Pick<TokenUsageOverview, 'models'>,
+): UsageDistributionItem[] {
+  const models = usage.models.filter((item) => item.total_tokens > 0);
   const leading = models.slice(0, MODEL_COLORS.length);
   const items: UsageDistributionItem[] = leading.map((item, index) => ({
     id: item.model,
@@ -143,86 +147,6 @@ function modelDistribution(overview: TokenUsageOverview): UsageDistributionItem[
     });
   }
   return items;
-}
-
-function formatPercentage(value: number, total: number): string {
-  if (total <= 0) {
-    return '0%';
-  }
-  const percentage = (value / total) * 100;
-  return `${percentage < 0.1 ? '<0.1' : percentage.toFixed(1)}%`;
-}
-
-interface TodayUsageSnapshotProps {
-  summary: TokenUsageSummary;
-}
-
-function TodayUsageSnapshot({ summary }: TodayUsageSnapshotProps) {
-  const total = summary.totals.total_tokens;
-  const contributionDescription = summary.tools.map((item) => (
-    `${TOOL_META[item.tool].label} ${formatTokenCount(item.total_tokens)} Tokens，${
-      formatPercentage(item.total_tokens, total)
-    }`
-  )).join('；');
-
-  return (
-    <div className="usage-today-card">
-      <div className="usage-today-total">
-        <p className="section-kicker">TOTAL TOKENS</p>
-        <strong aria-label={`${formatTokenCount(total)} Tokens`}>
-          {formatCompactTokenCount(total)}
-        </strong>
-        <div className="usage-today-meta">
-          <span>{formatTokenCount(total)} Tokens</span>
-          <span>{formatTokenCount(summary.totals.event_count)} 次请求</span>
-        </div>
-      </div>
-
-      <div className="usage-today-tools">
-        <div className="usage-today-tools-heading">
-          <p className="section-kicker">TOOL CONTRIBUTION</p>
-          <h2>工具贡献</h2>
-        </div>
-        <div
-          className="usage-contribution-track"
-          role="img"
-          aria-label={total > 0 ? contributionDescription : '今日暂无工具用量'}
-        >
-          {summary.tools.filter((item) => item.total_tokens > 0).map((item) => (
-            <span
-              style={{
-                backgroundColor: TOOL_META[item.tool].color,
-                flexGrow: item.total_tokens,
-              }}
-              key={item.tool}
-            />
-          ))}
-        </div>
-        <dl className="usage-today-tool-list">
-          {summary.tools.map((item) => (
-            <div key={item.tool}>
-              <dt>
-                <i
-                  style={{ backgroundColor: TOOL_META[item.tool].color }}
-                  aria-hidden="true"
-                />
-                {TOOL_META[item.tool].label}
-              </dt>
-              <dd>
-                <strong
-                  title={`${formatTokenCount(item.total_tokens)} Tokens`}
-                  aria-label={`${formatTokenCount(item.total_tokens)} Tokens`}
-                >
-                  {formatCompactTokenCount(item.total_tokens)}
-                </strong>
-                <span>{formatPercentage(item.total_tokens, total)}</span>
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-    </div>
-  );
 }
 
 interface UsageTokenReadingProps {
@@ -502,18 +426,32 @@ export default function TokenUsagePage() {
     return `/usage?${nextSearchParams.toString()}`;
   };
 
-  const toolItems = useMemo(
+  const todayToolItems = useMemo(
+    () => todaySummary ? toolDistribution(todaySummary) : [],
+    [todaySummary],
+  );
+  const todayModelItems = useMemo(
+    () => todaySummary ? modelDistribution(todaySummary) : [],
+    [todaySummary],
+  );
+  const totalToolItems = useMemo(
     () => overview ? toolDistribution(overview) : [],
     [overview],
   );
-  const modelItems = useMemo(
+  const totalModelItems = useMemo(
     () => overview ? modelDistribution(overview) : [],
     [overview],
   );
-  const usedToolCount = overview?.tools.filter(
+  const todayUsedToolCount = todaySummary?.tools.filter(
     (item) => item.total_tokens > 0,
   ).length ?? 0;
-  const usedModelCount = overview?.models.filter(
+  const todayUsedModelCount = todaySummary?.models.filter(
+    (item) => item.total_tokens > 0,
+  ).length ?? 0;
+  const totalUsedToolCount = overview?.tools.filter(
+    (item) => item.total_tokens > 0,
+  ).length ?? 0;
+  const totalUsedModelCount = overview?.models.filter(
     (item) => item.total_tokens > 0,
   ).length ?? 0;
   const displayedSummary = summaryDataKey.current === summaryQueryKey
@@ -582,14 +520,42 @@ export default function TokenUsagePage() {
           )}
 
           {!todaySummary && !todayError && (
-            <div className="usage-today-skeleton" aria-label="正在读取今日用量">
+            <div
+              className="usage-overview-skeleton"
+              aria-label="正在读取今日用量"
+            >
               <span className="skeleton-line is-hero" />
-              <span className="skeleton-line" />
-              <span className="skeleton-line is-short" />
+              <span className="skeleton-chart" />
+              <span className="skeleton-chart" />
             </div>
           )}
 
-          {todaySummary && <TodayUsageSnapshot summary={todaySummary} />}
+          {todaySummary && (
+            <div className="usage-overview-grid">
+              <UsageTokenReading
+                detailsLabel="今日明细"
+                kicker="TOKEN BREAKDOWN"
+                title="Tokens 分布"
+                titleId="usage-today-title"
+                totals={todaySummary.totals}
+              />
+
+              <UsageDistributionChart
+                kicker="TOOL SHARE"
+                title="按工具"
+                items={todayToolItems}
+                centerValue={formatTokenCount(todayUsedToolCount)}
+                centerLabel="个工具"
+              />
+              <UsageDistributionChart
+                kicker="MODEL SHARE"
+                title="按模型"
+                items={todayModelItems}
+                centerValue={formatTokenCount(todayUsedModelCount)}
+                centerLabel="个模型"
+              />
+            </div>
+          )}
         </section>
       )}
 
@@ -637,15 +603,15 @@ export default function TokenUsagePage() {
               <UsageDistributionChart
                 kicker="TOOL SHARE"
                 title="按工具"
-                items={toolItems}
-                centerValue={formatTokenCount(usedToolCount)}
+                items={totalToolItems}
+                centerValue={formatTokenCount(totalUsedToolCount)}
                 centerLabel="个工具"
               />
               <UsageDistributionChart
                 kicker="MODEL SHARE"
                 title="按模型"
-                items={modelItems}
-                centerValue={formatTokenCount(usedModelCount)}
+                items={totalModelItems}
+                centerValue={formatTokenCount(totalUsedModelCount)}
                 centerLabel="个模型"
               />
             </div>
