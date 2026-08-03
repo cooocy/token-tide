@@ -36,15 +36,12 @@ class TokenUsageCollectorTest(unittest.TestCase):
                 "claude",
                 lambda cursor: ScanResult(events=[], cursor=cursor),
                 batch_size=500,
-                verbose=False,
             )
 
         output = stderr.getvalue()
         self.assertEqual(result.events, 0)
-        self.assertIn("[claude] sync started", output)
-        self.assertIn("[claude] no changes", output)
-        self.assertNotIn("fetching checkpoint", output)
-        self.assertNotIn("scanning local data", output)
+        self.assertIn("▶  claude", output)
+        self.assertIn("◀  claude  no changes", output)
 
     def test_only_final_batch_advances_cursor(self) -> None:
         class Client:
@@ -80,14 +77,15 @@ class TokenUsageCollectorTest(unittest.TestCase):
                     cursor={"version": 1, "offset": 20},
                 ),
                 batch_size=2,
-                verbose=True,
             )
 
         self.assertEqual(client.submissions[0][1]["offset"], 10)
         self.assertEqual(client.submissions[1][1]["offset"], 20)
         self.assertEqual(result.created, 3)
-        self.assertIn("uploading batch=1/2", stderr.getvalue())
-        self.assertIn("sync completed events=3", stderr.getvalue())
+        output = stderr.getvalue()
+        self.assertIn("▶  codex", output)
+        self.assertIn("◀  codex", output)
+        self.assertIn("events=3", output)
 
     def test_claude_resumes_offset_and_outputs_invalid_complete_line(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

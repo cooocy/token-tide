@@ -62,14 +62,14 @@ class SyncResult:
     duration_seconds: float
 
 
-def log_message(level: str, scope: str, message: str) -> None:
-    timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
-    print(f"{timestamp} {level} [{scope}] {message}", file=sys.stderr)
-
-
-def verbose_log(enabled: bool, scope: str, message: str) -> None:
-    if enabled:
-        log_message("INFO", scope, message)
+def print_banner(lines: list[str], *, file: Any = sys.stderr) -> None:
+    width = max(len(line) for line in lines) + 4
+    top = "╭" + "─" * (width - 2) + "╮"
+    bottom = "╰" + "─" * (width - 2) + "╯"
+    print(top, file=file)
+    for line in lines:
+        print(f"│  {line}{' ' * (width - len(line) - 4)}│", file=file)
+    print(bottom, file=file)
 
 
 def stable_hash(*values: object) -> str:
@@ -985,20 +985,14 @@ def sync_tool(
     tool: str,
     scanner: Callable[[dict[str, object]], ScanResult],
     batch_size: int,
-    verbose: bool,
 ) -> SyncResult:
     started_at = time.monotonic()
-    log_message("INFO", tool, "sync started")
-    verbose_log(verbose, tool, "fetching checkpoint")
+    print(f"▶  {tool}", file=sys.stderr)
     previous_cursor = client.checkpoint(tool)
-    cursor_version = previous_cursor.get("version", "empty")
-    verbose_log(verbose, tool, f"checkpoint fetched version={cursor_version}")
-    verbose_log(verbose, tool, "scanning local data")
     result = scanner(previous_cursor)
-    verbose_log(verbose, tool, f"scan completed events={len(result.events)}")
     if not result.events and result.cursor == previous_cursor:
         duration = time.monotonic() - started_at
-        log_message("INFO", tool, f"no changes duration={duration:.2f}s")
+        print(f"◀  {tool}  no changes  ⏱ {duration:.2f}s", file=sys.stderr)
         return SyncResult(tool, 0, 0, 0, 0, 0, duration)
     batches = [
         result.events[index : index + batch_size]
@@ -1009,11 +1003,6 @@ def sync_tool(
     created = updated = unchanged = 0
     for index, batch in enumerate(batches):
         final = index == len(batches) - 1
-        verbose_log(
-            verbose,
-            tool,
-            f"uploading batch={index + 1}/{len(batches)} events={len(batch)}",
-        )
         try:
             response = client.submit(
                 tool,
@@ -1033,21 +1022,15 @@ def sync_tool(
         created += counts["created"]
         updated += counts["updated"]
         unchanged += counts["unchanged"]
-        verbose_log(
-            verbose,
-            tool,
-            f"batch={index + 1}/{len(batches)} uploaded "
-            f"created={counts['created']} updated={counts['updated']} "
-            f"unchanged={counts['unchanged']}",
-        )
     duration = time.monotonic() - started_at
-    log_message(
-        "INFO",
-        tool,
-        f"sync completed events={len(result.events)} batches={len(batches)} "
-        f"created={created} updated={updated} unchanged={unchanged} "
-        f"duration={duration:.2f}s",
-    )
+    parts = [
+        f"events={len(result.events)}",
+        f"batches={len(batches)}",
+        f"created={created}",
+        f"updated={updated}",
+        f"unchanged={unchanged}",
+    ]
+    print(f"◀  {tool}  {'  '.join(parts)}  ⏱ {duration:.2f}s", file=sys.stderr)
     return SyncResult(
         tool=tool,
         events=len(result.events),
@@ -1075,12 +1058,6 @@ def main() -> None:
         help=f"events per request, 1-{MAX_BATCH_SIZE}",
     )
     parser.add_argument("--timeout-seconds", type=float, default=15)
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="show checkpoint, scan and per-batch details",
-    )
     args = parser.parse_args()
     token = os.environ.get("TOKEN_TIDE_TOKEN_USAGE_TOKEN")
     if not args.base_url:
@@ -1093,7 +1070,10 @@ def main() -> None:
         parser.error("--timeout-seconds must be positive")
 
     started_at = time.monotonic()
-    log_message("INFO", "sync", f"started tools={','.join(TOOLS)}")
+    print_banner([
+        "󰓦  TokenTide Sync Started",
+        f"Tools: {', '.join(TOOLS)}",
+    ])
     client = TokenTideClient(args.base_url, token, args.timeout_seconds)
     scanners: dict[str, Callable[[dict[str, object]], ScanResult]] = {
         "claude": scan_claude,
@@ -1111,27 +1091,27 @@ def main() -> None:
                     tool,
                     scanners[tool],
                     args.batch_size,
-                    args.verbose,
                 )
             )
         except (OSError, RuntimeError, sqlite3.Error) as error:
             failures.append(tool)
-            log_message("ERROR", tool, str(error))
+            print(f"✖  {tool}  sync failed: {error}", file=sys.stderr)
     duration = time.monotonic() - started_at
     totals = {
         field: sum(getattr(result, field) for result in results)
         for field in ("events", "batches", "created", "updated", "unchanged")
     }
-    level = "ERROR" if failures else "INFO"
-    log_message(
-        level,
-        "sync",
-        f"completed succeeded={len(results)} failed={len(failures)} "
-        f"events={totals['events']} batches={totals['batches']} "
-        f"created={totals['created']} updated={totals['updated']} "
-        f"unchanged={totals['unchanged']} duration={duration:.2f}s"
-        + (f" failed_tools={','.join(failures)}" if failures else ""),
-    )
+    icon = "󰅙" if failures else "󰗠"
+    banner_lines = [
+        f"{icon}  TokenTide Sync Completed",
+        f"󰄬 Succeeded: {len(results)}  󰅖 Failed: {len(failures)}",
+        f"Events: {totals['events']}  Batches: {totals['batches']}",
+        f"Created: {totals['created']}  Updated: {totals['updated']}  Unchanged: {totals['unchanged']}",
+        f"⏱ Duration: {duration:.2f}s",
+    ]
+    if failures:
+        banner_lines.insert(2, f"Failed: {', '.join(failures)}")
+    print_banner(banner_lines)
     if failures:
         raise SystemExit(1)
 
