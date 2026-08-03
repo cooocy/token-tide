@@ -118,6 +118,86 @@ function modelDistribution(overview: TokenUsageOverview): UsageDistributionItem[
   return items;
 }
 
+function formatPercentage(value: number, total: number): string {
+  if (total <= 0) {
+    return '0%';
+  }
+  const percentage = (value / total) * 100;
+  return `${percentage < 0.1 ? '<0.1' : percentage.toFixed(1)}%`;
+}
+
+interface TodayUsageSnapshotProps {
+  summary: TokenUsageSummary;
+}
+
+function TodayUsageSnapshot({ summary }: TodayUsageSnapshotProps) {
+  const total = summary.totals.total_tokens;
+  const contributionDescription = summary.tools.map((item) => (
+    `${TOOL_META[item.tool].label} ${formatTokenCount(item.total_tokens)} Tokens，${
+      formatPercentage(item.total_tokens, total)
+    }`
+  )).join('；');
+
+  return (
+    <div className="usage-today-card">
+      <div className="usage-today-total">
+        <p className="section-kicker">TOTAL TOKENS</p>
+        <strong aria-label={`${formatTokenCount(total)} Tokens`}>
+          {formatCompactTokenCount(total)}
+        </strong>
+        <div className="usage-today-meta">
+          <span>{formatTokenCount(total)} Tokens</span>
+          <span>{formatTokenCount(summary.totals.event_count)} 次请求</span>
+        </div>
+      </div>
+
+      <div className="usage-today-tools">
+        <div className="usage-today-tools-heading">
+          <p className="section-kicker">TOOL CONTRIBUTION</p>
+          <h2>工具贡献</h2>
+        </div>
+        <div
+          className="usage-contribution-track"
+          role="img"
+          aria-label={total > 0 ? contributionDescription : '今日暂无工具用量'}
+        >
+          {summary.tools.filter((item) => item.total_tokens > 0).map((item) => (
+            <span
+              style={{
+                backgroundColor: TOOL_META[item.tool].color,
+                flexGrow: item.total_tokens,
+              }}
+              key={item.tool}
+            />
+          ))}
+        </div>
+        <dl className="usage-today-tool-list">
+          {summary.tools.map((item) => (
+            <div key={item.tool}>
+              <dt>
+                <i
+                  style={{ backgroundColor: TOOL_META[item.tool].color }}
+                  aria-hidden="true"
+                />
+                {TOOL_META[item.tool].label}
+              </dt>
+              <dd>
+                <strong
+                  title={`${formatTokenCount(item.total_tokens)} Tokens`}
+                  aria-label={`${formatTokenCount(item.total_tokens)} Tokens`}
+                >
+                  {formatCompactTokenCount(item.total_tokens)}
+                </strong>
+                <span>{formatPercentage(item.total_tokens, total)}</span>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </div>
+  );
+}
+
 interface UsageTokenReadingProps {
   className?: string;
   detailsLabel: string;
@@ -190,18 +270,49 @@ export default function TokenUsagePage() {
   const tool = isTool(searchParams.get('tool'))
     ? searchParams.get('tool') as ToolFilter
     : 'all';
+  const [todaySummary, setTodaySummary] = useState<TokenUsageSummary | null>(
+    null,
+  );
   const [overview, setOverview] = useState<TokenUsageOverview | null>(null);
   const [summary, setSummary] = useState<TokenUsageSummary | null>(null);
+  const [todayLoading, setTodayLoading] = useState(true);
   const [overviewLoading, setOverviewLoading] = useState(true);
   const [summaryLoading, setSummaryLoading] = useState(true);
+  const [todayError, setTodayError] = useState<string | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [todayReloadKey, setTodayReloadKey] = useState(0);
   const [overviewReloadKey, setOverviewReloadKey] = useState(0);
   const [summaryReloadKey, setSummaryReloadKey] = useState(0);
+  const todayRequestId = useRef(0);
   const overviewRequestId = useRef(0);
   const summaryRequestId = useRef(0);
   const toolSegmentsRef = useRef<HTMLDivElement | null>(null);
   const activeToolButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  const loadTodaySummary = useCallback(async (): Promise<void> => {
+    const currentRequestId = todayRequestId.current + 1;
+    todayRequestId.current = currentRequestId;
+    setTodayLoading(true);
+    setTodayError(null);
+    try {
+      const data = await findTokenUsageSummary(queryRange('today'));
+      if (todayRequestId.current === currentRequestId) {
+        setTodaySummary(data);
+      }
+    } catch (loadError) {
+      if (todayRequestId.current === currentRequestId) {
+        setTodaySummary(null);
+        setTodayError(
+          loadError instanceof Error ? loadError.message : '今日用量加载失败',
+        );
+      }
+    } finally {
+      if (todayRequestId.current === currentRequestId) {
+        setTodayLoading(false);
+      }
+    }
+  }, []);
 
   const loadOverview = useCallback(async (): Promise<void> => {
     const currentRequestId = overviewRequestId.current + 1;
@@ -253,6 +364,13 @@ export default function TokenUsagePage() {
       }
     }
   }, [period, tool]);
+
+  useEffect(() => {
+    void loadTodaySummary();
+    return () => {
+      todayRequestId.current += 1;
+    };
+  }, [loadTodaySummary, todayReloadKey]);
 
   useEffect(() => {
     void loadOverview();
@@ -335,16 +453,50 @@ export default function TokenUsagePage() {
   return (
     <main
       className="app-shell usage-page"
-      aria-busy={overviewLoading || summaryLoading}
+      aria-busy={todayLoading || overviewLoading || summaryLoading}
     >
       <ProductHeader />
       <ProductNavigation />
 
-      <section className="usage-hero" aria-labelledby="usage-title">
+      <section className="usage-today" aria-labelledby="usage-title">
+        <div className="section-heading usage-today-heading">
+          <div>
+            <p className="section-kicker">TODAY</p>
+            <h1 id="usage-title">今日用量</h1>
+          </div>
+        </div>
+
+        <div className="message-stack usage-message" aria-live="polite">
+          {todayError && (
+            <div className="inline-message is-error" role="alert">
+              <span>{todayError}</span>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setTodayReloadKey((value) => value + 1)}
+              >
+                重试
+              </button>
+            </div>
+          )}
+        </div>
+
+        {todayLoading && !todaySummary && (
+          <div className="usage-today-skeleton" aria-label="正在读取今日用量">
+            <span className="skeleton-line is-hero" />
+            <span className="skeleton-line" />
+            <span className="skeleton-line is-short" />
+          </div>
+        )}
+
+        {todaySummary && <TodayUsageSnapshot summary={todaySummary} />}
+      </section>
+
+      <section className="usage-hero" aria-labelledby="usage-overview-title">
         <div className="section-heading usage-overview-heading">
           <div>
             <p className="section-kicker">ALL-TIME</p>
-            <h1 id="usage-title">总计</h1>
+            <h2 id="usage-overview-title">总计</h2>
           </div>
         </div>
 
