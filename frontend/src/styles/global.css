@@ -1448,7 +1448,12 @@ svg {
 }
 
 .usage-model-panel {
-  padding: 18px;
+  padding: 18px 20px;
+}
+
+.usage-model-panel .section-heading {
+  padding-right: 0;
+  padding-left: 0;
 }
 
 .usage-model-empty {
@@ -1526,6 +1531,11 @@ svg {
   .usage-tide-panel {
     padding-right: 10px;
     padding-left: 10px;
+  }
+
+  .usage-analysis .usage-model-panel {
+    padding-right: 16px;
+    padding-left: 16px;
   }
 }
 
@@ -2068,6 +2078,11 @@ svg {
   }
 
   .usage-distribution-card {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .usage-overview-grid > .usage-model-panel {
     padding-right: 16px;
     padding-left: 16px;
   }
