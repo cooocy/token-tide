@@ -628,28 +628,15 @@ def pi_event(
         if not isinstance(model, str) or not model:
             raise ValueError("model is required")
         usage = pi_usage(usage_raw)
-        if usage["total_tokens"] == 0:
+        reasoning = token_int(usage_raw, "reasoning") if isinstance(usage_raw, dict) else 0
+        if usage["total_tokens"] == 0 and reasoning == 0:
             return None
-        message_timestamp = message.get("timestamp") if isinstance(message, dict) else None
-        tool_call_id = message.get("toolCallId") if isinstance(message, dict) else None
-        response_id = message.get("responseId") if isinstance(message, dict) else None
         return event_value(
-            stable_hash(
-                "pi",
-                raw.get("timestamp"),
-                raw_type,
-                role,
-                message_timestamp,
-                tool_call_id,
-                response_id,
-                raw.get("summary"),
-                provider,
-                model,
-                usage,
-            ),
+            stable_hash("pi", raw.get("id"), raw.get("timestamp")),
             occurred_at,
             model,
             provider=provider,
+            reasoning_tokens=reasoning,
             **usage,
         )
     except (TypeError, ValueError) as error:
