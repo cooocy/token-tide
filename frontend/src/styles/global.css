@@ -1451,6 +1451,12 @@ svg {
   padding: 18px;
 }
 
+.usage-model-empty {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
 .usage-model-list {
   display: grid;
   gap: 0;
@@ -1698,6 +1704,12 @@ svg {
   border: 1px solid var(--line);
   border-radius: var(--usage-card-radius);
   background: var(--line);
+}
+
+.usage-overview-grid > .usage-model-panel {
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
 }
 
 .usage-total-reading,

@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import {
   findTokenUsageOverview,
   findTokenUsageSummary,
+  type TokenUsageModelSummary,
   type TokenUsageOverview,
   type TokenUsageSummary,
   type TokenUsageTool,
@@ -217,6 +218,68 @@ function UsageTokenReading({
           </dl>
         </div>
       </div>
+    </section>
+  );
+}
+
+interface ModelUsagePanelProps {
+  models: TokenUsageModelSummary[];
+  totalTokens: number;
+}
+
+function ModelUsagePanel({ models, totalTokens }: ModelUsagePanelProps) {
+  const largestModelTotal = Math.max(
+    ...models.map((model) => model.total_tokens),
+    1,
+  );
+
+  return (
+    <section className="usage-panel usage-model-panel">
+      <div className="section-heading">
+        <div>
+          <p className="section-kicker">MODEL USAGE</p>
+          <h2>模型用量</h2>
+        </div>
+        <span>{models.length} 个模型</span>
+      </div>
+      {models.length > 0 ? (
+        <ol className="usage-model-list">
+          {models.map((model) => (
+            <li key={model.model}>
+              <div className="usage-model-heading">
+                <span title={model.model}>{model.model}</span>
+                <strong
+                  aria-label={`${formatTokenCount(model.total_tokens)} Tokens`}
+                  title={formatTokenCount(model.total_tokens)}
+                >
+                  {formatCompactTokenCount(model.total_tokens)}
+                </strong>
+              </div>
+              <div className="usage-model-track" aria-hidden="true">
+                <span
+                  style={{
+                    width: `${Math.max(
+                      (model.total_tokens / largestModelTotal) * 100,
+                      1.5,
+                    )}%`,
+                  }}
+                />
+              </div>
+              <small>
+                {formatTokenCount(model.event_count)} 次 · {
+                  totalTokens > 0
+                    ? `${(
+                      (model.total_tokens / totalTokens) * 100
+                    ).toFixed(1)}%`
+                    : '0%'
+                }
+              </small>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="usage-model-empty">暂无用量</p>
+      )}
     </section>
   );
 }
@@ -438,10 +501,6 @@ export default function TokenUsagePage() {
     () => todaySummary ? toolDistribution(todaySummary) : [],
     [todaySummary],
   );
-  const todayModelItems = useMemo(
-    () => todaySummary ? modelDistribution(todaySummary) : [],
-    [todaySummary],
-  );
   const totalToolItems = useMemo(
     () => overview ? toolDistribution(overview) : [],
     [overview],
@@ -451,9 +510,6 @@ export default function TokenUsagePage() {
     [overview],
   );
   const todayUsedToolCount = todaySummary?.tools.filter(
-    (item) => item.total_tokens > 0,
-  ).length ?? 0;
-  const todayUsedModelCount = todaySummary?.models.filter(
     (item) => item.total_tokens > 0,
   ).length ?? 0;
   const totalUsedToolCount = overview?.tools.filter(
@@ -468,10 +524,6 @@ export default function TokenUsagePage() {
   const displayedSummaryError = summaryDataKey.current === summaryQueryKey
     ? summaryError
     : null;
-  const largestModelTotal = Math.max(
-    ...(displayedSummary?.models.map((model) => model.total_tokens) ?? []),
-    1,
-  );
   const activeLoading = view === 'today'
     ? todayLoading || (!todaySummary && !todayError)
     : view === 'total'
@@ -555,12 +607,9 @@ export default function TokenUsagePage() {
                 centerValue={formatTokenCount(todayUsedToolCount)}
                 centerLabel="个工具"
               />
-              <UsageDistributionChart
-                kicker="MODEL SHARE"
-                title="按模型"
-                items={todayModelItems}
-                centerValue={formatTokenCount(todayUsedModelCount)}
-                centerLabel="个模型"
+              <ModelUsagePanel
+                models={todaySummary.models}
+                totalTokens={todaySummary.totals.total_tokens}
               />
             </div>
           )}
@@ -725,56 +774,10 @@ export default function TokenUsagePage() {
                     <UsageTideChart days={displayedSummary.timeline} />
                   </section>
 
-                  <section className="usage-panel usage-model-panel">
-                    <div className="section-heading">
-                      <div>
-                        <p className="section-kicker">MODEL USAGE</p>
-                        <h2>模型用量</h2>
-                      </div>
-                      <span>{displayedSummary.models.length} 个模型</span>
-                    </div>
-                    <ol className="usage-model-list">
-                      {displayedSummary.models.map((model) => (
-                        <li key={model.model}>
-                          <div className="usage-model-heading">
-                            <span title={model.model}>{model.model}</span>
-                            <strong
-                              aria-label={`${
-                                formatTokenCount(model.total_tokens)
-                              } Tokens`}
-                              title={formatTokenCount(model.total_tokens)}
-                            >
-                              {formatCompactTokenCount(model.total_tokens)}
-                            </strong>
-                          </div>
-                          <div className="usage-model-track" aria-hidden="true">
-                            <span
-                              style={{
-                                width: `${Math.max(
-                                  (
-                                    model.total_tokens / largestModelTotal
-                                  ) * 100,
-                                  1.5,
-                                )}%`,
-                              }}
-                            />
-                          </div>
-                          <small>
-                            {formatTokenCount(model.event_count)} 次 · {
-                              displayedSummary.totals.total_tokens > 0
-                                ? `${(
-                                  (
-                                    model.total_tokens
-                                    / displayedSummary.totals.total_tokens
-                                  ) * 100
-                                ).toFixed(1)}%`
-                                : '0%'
-                            }
-                          </small>
-                        </li>
-                      ))}
-                    </ol>
-                  </section>
+                  <ModelUsagePanel
+                    models={displayedSummary.models}
+                    totalTokens={displayedSummary.totals.total_tokens}
+                  />
                 </div>
               )}
             </>
