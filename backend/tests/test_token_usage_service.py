@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 import pytest
 from pydantic import ValidationError
@@ -363,6 +364,44 @@ def test_summary_filters_one_tool_and_keeps_zero_days(
     assert summary.totals.total_tokens == 0
     assert [day.total_tokens for day in summary.timeline] == [0, 0]
     assert summary.models == []
+
+
+def test_summary_uses_calendar_timezone_across_daylight_saving_change(
+    service: tuple[TokenUsageService, sessionmaker[Session]],
+) -> None:
+    usage_service, _ = service
+    usage_service.ingest(
+        TokenUsageTool.CODEX,
+        TokenUsageBatchInput(
+            events=[
+                event(
+                    source_event_id="d" * 64,
+                    occurred_at=datetime(2026, 3, 8, 4, 30, tzinfo=UTC),
+                    total_tokens=10,
+                ),
+                event(
+                    source_event_id="e" * 64,
+                    occurred_at=datetime(2026, 3, 8, 5, 30, tzinfo=UTC),
+                    total_tokens=20,
+                ),
+            ],
+            next_cursor={"version": 1},
+        ),
+    )
+
+    summary = usage_service.summary(
+        tool=None,
+        start_time=datetime(2026, 3, 7, 5, tzinfo=UTC),
+        end_time=datetime(2026, 3, 9, 4, tzinfo=UTC),
+        timezone_offset_minutes=-240,
+        calendar_timezone=ZoneInfo("America/New_York"),
+    )
+
+    assert [day.date.isoformat() for day in summary.timeline] == [
+        "2026-03-07",
+        "2026-03-08",
+    ]
+    assert [day.total_tokens for day in summary.timeline] == [10, 20]
 
 
 @pytest.mark.parametrize(

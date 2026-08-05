@@ -167,6 +167,7 @@ POST /refresh/{provider}
 GET  /token-usage/overview
 GET  /token-usage/summary
 GET  /token-usage/totals
+GET  /token-usage/card.svg
 GET  /token-usage/{tool}/checkpoint
 POST /token-usage/{tool}/events/batch
 ```
@@ -197,6 +198,45 @@ checkpoint 与批量上报接口仍要求 Token Usage Bearer Token。
 Token Usage 总计接口同样公开读取，仅接受可选的 `tool` 参数。它使用数据库聚合统计
 全部历史事件，返回累计请求数、`total_tokens` 和各 Token 类型明细，不返回每日趋势
 或模型排行，也不受 31 天查询跨度限制。
+
+### GitHub Profile 用量仪表
+
+`GET /token-usage/card.svg` 返回可直接嵌入 GitHub Profile README 的 `720×220`
+动态 SVG。卡片展示所选区间的 Token 总量、今日用量、请求数、每日趋势和工具占比。
+接口公开读取，支持：
+
+```text
+period     # 7d 或 30d，默认 7d
+tool       # all、claude、codex、opencode 或 pi，默认 all
+theme      # dark 或 light，默认 dark
+timezone   # IANA 时区，默认 Asia/Shanghai
+```
+
+将下方的域名和站点路径替换为实际部署地址，即可随 GitHub 深浅主题自动选择卡片：
+
+```html
+<a href="https://token-tide.example.com/token-tide/usage?view=analysis&amp;period=7d&amp;tool=all">
+  <picture>
+    <source
+      media="(prefers-color-scheme: dark)"
+      srcset="https://token-tide.example.com/api/token-usage/card.svg?period=7d&amp;tool=all&amp;theme=dark&amp;timezone=Asia%2FShanghai"
+    >
+    <source
+      media="(prefers-color-scheme: light)"
+      srcset="https://token-tide.example.com/api/token-usage/card.svg?period=7d&amp;tool=all&amp;theme=light&amp;timezone=Asia%2FShanghai"
+    >
+    <img
+      alt="My AI coding Token usage"
+      src="https://token-tide.example.com/api/token-usage/card.svg?period=7d&amp;tool=all&amp;theme=dark&amp;timezone=Asia%2FShanghai"
+      width="720"
+      height="220"
+    >
+  </picture>
+</a>
+```
+
+SVG 响应缓存十分钟，不包含脚本、外部字体或外部图片。无数据时仍会返回完整的
+`0 Tokens` 仪表，而不是破损图片。
 
 金额在写入数据库前按四舍五入保留 2 位小数，接口统一以固定 2 位的十进制字符串返回。
 `GET /balances` 的当前余额来自每个平台、币种最新的 `balance_snapshot`。

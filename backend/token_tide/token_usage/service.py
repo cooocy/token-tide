@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, tzinfo
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -138,6 +138,7 @@ class TokenUsageService:
         start_time: datetime,
         end_time: datetime,
         timezone_offset_minutes: int,
+        calendar_timezone: tzinfo | None = None,
     ) -> TokenUsageSummary:
         start_time = self._require_aware_datetime(start_time)
         end_time = self._require_aware_datetime(end_time)
@@ -181,15 +182,26 @@ class TokenUsageService:
             model["event_count"] += 1
             model["total_tokens"] += event.total_tokens
 
-            local_date = (normalize_datetime(event.occurred_at) + offset).date()
+            occurred_at = normalize_datetime(event.occurred_at)
+            local_date = (
+                occurred_at.astimezone(calendar_timezone).date()
+                if calendar_timezone is not None
+                else (occurred_at + offset).date()
+            )
             day = daily_totals.setdefault(
                 local_date,
                 {usage_tool: 0 for usage_tool in TokenUsageTool},
             )
             day[event_tool] += event.total_tokens
 
-        first_date = (start_time + offset).date()
-        last_date = (end_time - timedelta(microseconds=1) + offset).date()
+        if calendar_timezone is None:
+            first_date = (start_time + offset).date()
+            last_date = (end_time - timedelta(microseconds=1) + offset).date()
+        else:
+            first_date = start_time.astimezone(calendar_timezone).date()
+            last_date = (
+                end_time - timedelta(microseconds=1)
+            ).astimezone(calendar_timezone).date()
         timeline: list[TokenUsageDay] = []
         current_date = first_date
         while current_date <= last_date:

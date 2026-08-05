@@ -1,9 +1,16 @@
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 
 from token_tide.response import R, ok
+from token_tide.token_usage.card import (
+    UsageCardPeriod,
+    UsageCardTheme,
+    UsageCardTool,
+    find_card_summary,
+    render_usage_card,
+)
 from token_tide.token_usage.dependencies import (
     get_token_usage_service,
     require_token_usage_token,
@@ -21,6 +28,42 @@ from token_tide.token_usage.service import TokenUsageService
 
 router = APIRouter(prefix="/token-usage")
 Service = Annotated[TokenUsageService, Depends(get_token_usage_service)]
+
+
+@router.get(
+    "/card.svg",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {"image/svg+xml": {}},
+            "description": "GitHub Profile token usage card",
+        }
+    },
+)
+def find_card(
+    service: Service,
+    period: UsageCardPeriod = UsageCardPeriod.SEVEN_DAYS,
+    tool: UsageCardTool = UsageCardTool.ALL,
+    theme: UsageCardTheme = UsageCardTheme.DARK,
+    timezone: str = Query(default="Asia/Shanghai", min_length=1, max_length=64),
+) -> Response:
+    summary = find_card_summary(
+        service=service,
+        period=period,
+        tool=tool,
+        timezone_name=timezone,
+    )
+    return Response(
+        content=render_usage_card(summary, period, tool, theme),
+        media_type="image/svg+xml",
+        headers={
+            "Cache-Control": "public, max-age=600, stale-while-revalidate=60",
+            "Content-Security-Policy": (
+                "default-src 'none'; style-src 'unsafe-inline'"
+            ),
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.get(
