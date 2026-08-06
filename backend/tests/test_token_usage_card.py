@@ -160,6 +160,26 @@ def test_render_usage_card_contains_metrics_tide_and_dark_palette() -> None:
     assert '<foreignObject' not in svg
 
 
+def test_render_usage_card_uses_one_background_and_aligned_columns() -> None:
+    svg = render_usage_card(
+        summary(),
+        UsageCardPeriod.SEVEN_DAYS,
+        UsageCardTool.ALL,
+        UsageCardTheme.DARK,
+    )
+
+    assert 'x="12" y="12" width="210" height="196"' not in svg
+    assert "Tokens by local day" not in svg
+    assert "Share of Tokens" not in svg
+    assert '<path d="M230 20V200M548 20V200"' in svg
+    assert '<text class="display" x="50" y="38"' in svg
+    assert '<text class="kicker" x="250" y="38">DAILY TIDE</text>' in svg
+    assert '<text class="kicker" x="570" y="38">TOOL MIX</text>' in svg
+    assert 'y="56.00"' in svg
+    assert '<text class="data" x="24" y="193"' in svg
+    assert '<rect x="570" y="177" width="126" height="22"' in svg
+
+
 def test_render_usage_card_has_light_theme_and_empty_direction() -> None:
     svg = render_usage_card(
         summary(total_tokens=0),

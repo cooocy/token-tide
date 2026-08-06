@@ -44,7 +44,6 @@ class UsageCardTool(StrEnum):
 @dataclass(frozen=True)
 class CardPalette:
     background: str
-    panel: str
     panel_alt: str
     foreground: str
     secondary: str
@@ -60,7 +59,6 @@ class CardPalette:
 PALETTES = {
     UsageCardTheme.DARK: CardPalette(
         background="#071820",
-        panel="#0a222b",
         panel_alt="#0c2731",
         foreground="#e7f5f4",
         secondary="#a8cfcb",
@@ -74,7 +72,6 @@ PALETTES = {
     ),
     UsageCardTheme.LIGHT: CardPalette(
         background="#f2fbfa",
-        panel="#ffffff",
         panel_alt="#e5f3f1",
         foreground="#12333a",
         secondary="#315b5d",
@@ -196,7 +193,7 @@ def render_usage_card(
     }
     chart_left = 258.0
     chart_right = 526.0
-    chart_top = 72.0
+    chart_top = 56.0
     chart_bottom = 174.0
     chart_height = chart_bottom - chart_top
     day_count = max(len(summary.timeline), 1)
@@ -267,7 +264,7 @@ def render_usage_card(
             continue
         value = tool_totals.get(usage_tool, 0)
         percentage = value / total_tokens * 100 if total_tokens else 0
-        y = 72 + index * 27
+        y = 64 + index * 29
         mix_rows.append(
             f'<circle cx="574" cy="{y - 3}" r="4" '
             f'fill="{tool_colors[usage_tool]}" />'
@@ -278,7 +275,7 @@ def render_usage_card(
         )
 
     empty_note = (
-        '<text class="empty" x="258" y="126">No usage yet</text>'
+        '<text class="empty" x="258" y="121">No usage yet</text>'
         if total_tokens == 0
         else ""
     )
@@ -314,30 +311,28 @@ def render_usage_card(
   </style>
   <rect x="1" y="1" width="718" height="218" rx="18"
     fill="{palette.background}" stroke="{palette.line}" stroke-width="2" />
-  <rect x="12" y="12" width="210" height="196" rx="13" fill="{palette.panel}" />
-  <path d="M230 28V192M548 28V192" stroke="{palette.line}" />
-  <g transform="translate(23 19) scale(.083)" fill="url(#mark)">
+  <path d="M230 20V200M548 20V200" stroke="{palette.line}" />
+  <g transform="translate(23 23) scale(.083)" fill="url(#mark)">
     <path d="M27 153C13 88 62 24 128 24s115 64 101 129l-14 8c19-56-24-120-87-120S22 105 41 161l-14-8Z" />
     <rect x="105" y="99" width="25" height="72" rx="7" />
     <rect x="145" y="69" width="25" height="102" rx="7" />
     <path d="M22 168c28-25 53-24 87-4 39 24 76 47 125-5-8 24-28 43-56 52-31 10-59-5-88-23-26-16-45-23-62-7l-6-13Z" />
     <path d="M36 205c20-12 41-7 66 9 29 19 58 26 94 10-19 18-42 28-68 28-40 0-74-18-92-47Z" />
   </g>
-  <text class="display" x="50" y="34" fill="{palette.foreground}"
+  <text class="display" x="50" y="38" fill="{palette.foreground}"
     font-size="13" font-weight="650">TokenTide</text>
   <text class="kicker" x="24" y="68">{period_label}</text>
   <text class="display" x="22" y="112" fill="{palette.foreground}"
     font-size="39" font-weight="500" letter-spacing="-2">{escape(format_compact_count(total_tokens))}</text>
   <text class="data" x="24" y="132" fill="{palette.muted}"
     font-size="9">{total_tokens:,} Tokens</text>
-  <text class="kicker" x="24" y="160">TODAY</text>
-  <text class="data" x="24" y="181" fill="{palette.foreground}"
+  <text class="kicker" x="24" y="169">TODAY</text>
+  <text class="data" x="24" y="193" fill="{palette.foreground}"
     font-size="14" font-weight="650">{escape(format_compact_count(today_tokens))}</text>
-  <text class="kicker" x="118" y="160">REQUESTS</text>
-  <text class="data" x="118" y="181" fill="{palette.foreground}"
+  <text class="kicker" x="118" y="169">REQUESTS</text>
+  <text class="data" x="118" y="193" fill="{palette.foreground}"
     font-size="14" font-weight="650">{summary.totals.event_count:,}</text>
   <text class="kicker" x="250" y="38">DAILY TIDE</text>
-  <text class="label" x="250" y="56">Tokens by local day</text>
   {bars}
   <polyline points="{points}" fill="none" stroke="{palette.accent}"
     stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"
@@ -345,7 +340,6 @@ def render_usage_card(
   {empty_note}
   {dates}
   <text class="kicker" x="570" y="38">TOOL MIX</text>
-  <text class="label" x="570" y="56">Share of Tokens</text>
   {mix}
   <rect x="570" y="177" width="126" height="22" rx="11" fill="{palette.panel_alt}" />
   <text class="data" x="633" y="192" text-anchor="middle"
