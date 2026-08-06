@@ -37,12 +37,19 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, NoReturn, Optional
 
 TOOLS = ("claude", "codex", "opencode", "pi")
 MAX_BATCH_SIZE = 500
 CURSOR_VERSION = 1
 SEMVER_PREFIX = re.compile(r"^\d+\.\d+\.\d+")
+
+# ANSI color codes for terminal output.
+RED = "\033[31m"
+GREEN = "\033[32m"
+YELLOW = "\033[33m"
+CYAN = "\033[36m"
+RESET = "\033[0m"
 
 
 @dataclass(frozen=True)
@@ -62,14 +69,15 @@ class SyncResult:
     duration_seconds: float
 
 
-def print_banner(lines: list[str], *, file: Any = sys.stderr) -> None:
+def print_banner(lines: list[str], *, file: Any = sys.stderr, color: str = "") -> None:
     width = max(len(line) for line in lines) + 4
     top = "╭" + "─" * (width - 2) + "╮"
     bottom = "╰" + "─" * (width - 2) + "╯"
-    print(top, file=file)
+    suffix = RESET if color else ""
+    print(f"{color}{top}{suffix}", file=file)
     for line in lines:
-        print(f"│  {line}{' ' * (width - len(line) - 4)}│", file=file)
-    print(bottom, file=file)
+        print(f"{color}│  {line}{' ' * (width - len(line) - 4)}│{suffix}", file=file)
+    print(f"{color}{bottom}{suffix}", file=file)
 
 
 def stable_hash(*values: object) -> str:
@@ -974,12 +982,12 @@ def sync_tool(
     batch_size: int,
 ) -> SyncResult:
     started_at = time.monotonic()
-    print(f"▶  {tool}", file=sys.stderr)
+    print(f"{CYAN}▶  {tool}{RESET}", file=sys.stderr)
     previous_cursor = client.checkpoint(tool)
     result = scanner(previous_cursor)
     if not result.events and result.cursor == previous_cursor:
         duration = time.monotonic() - started_at
-        print(f"◀  {tool}  no changes  ⏱ {duration:.2f}s", file=sys.stderr)
+        print(f"{YELLOW}◀  {tool}  no changes  ⏱ {duration:.2f}s{RESET}", file=sys.stderr)
         return SyncResult(tool, 0, 0, 0, 0, 0, duration)
     batches = [
         result.events[index : index + batch_size]
@@ -1017,7 +1025,7 @@ def sync_tool(
         f"updated={updated}",
         f"unchanged={unchanged}",
     ]
-    print(f"◀  {tool}  {'  '.join(parts)}  ⏱ {duration:.2f}s", file=sys.stderr)
+    print(f"{GREEN}◀  {tool}  {'  '.join(parts)}  ⏱ {duration:.2f}s{RESET}", file=sys.stderr)
     return SyncResult(
         tool=tool,
         events=len(result.events),
@@ -1029,8 +1037,15 @@ def sync_tool(
     )
 
 
+class ColoredArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> NoReturn:
+        self.print_usage(sys.stderr)
+        print(f"{RED}{self.prog}: error: {message}{RESET}", file=sys.stderr)
+        raise SystemExit(2)
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(
+    parser = ColoredArgumentParser(
         description="Incrementally upload Claude, Codex, OpenCode and Pi token usage",
     )
     parser.add_argument(
@@ -1082,7 +1097,7 @@ def main() -> None:
             )
         except (OSError, RuntimeError, sqlite3.Error) as error:
             failures.append(tool)
-            print(f"✖  {tool}  sync failed: {error}", file=sys.stderr)
+            print(f"{RED}✖  {tool}  sync failed: {error}{RESET}", file=sys.stderr)
     duration = time.monotonic() - started_at
     totals = {
         field: sum(getattr(result, field) for result in results)
@@ -1098,7 +1113,7 @@ def main() -> None:
     ]
     if failures:
         banner_lines.insert(2, f"Failed: {', '.join(failures)}")
-    print_banner(banner_lines)
+    print_banner(banner_lines, color=RED if failures else GREEN)
     if failures:
         raise SystemExit(1)
 

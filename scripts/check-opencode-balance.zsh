@@ -1,6 +1,10 @@
 #!/bin/zsh
 set -euo pipefail
 
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+RESET=$'\033[0m'
+
 # 在这里粘贴完整 Cookie：auth=... 或 __Host-auth=...
 # 安全提示：执行完请恢复为占位符，不要提交真实 Cookie。
 OPENCODE_COOKIE='auth=请替换这里'
@@ -13,12 +17,12 @@ BILLING_RPC_ID='c83b78a614689c38ebee981f9b39a8b377716db85c1fd7dbab604adc02d3313d
 BASE_URL='https://opencode.ai'
 
 if [[ "$OPENCODE_COOKIE" == *'请替换这里'* || -z "$OPENCODE_COOKIE" ]]; then
-  echo '错误：请先在脚本顶部填写 OPENCODE_COOKIE。' >&2
+  echo "${RED}错误：请先在脚本顶部填写 OPENCODE_COOKIE。${RESET}" >&2
   exit 1
 fi
 
 if [[ "$OPENCODE_COOKIE" != auth=* && "$OPENCODE_COOKIE" != __Host-auth=* ]]; then
-  echo '错误：Cookie 应为 auth=... 或 __Host-auth=...' >&2
+  echo "${RED}错误：Cookie 应为 auth=... 或 __Host-auth=...${RESET}" >&2
   exit 1
 fi
 
@@ -45,8 +49,8 @@ if [[ -z "$OPENCODE_WORKSPACE_ID" ]]; then
   )"
 
   if [[ -z "$OPENCODE_WORKSPACE_ID" ]]; then
-    echo '错误：未识别到 Workspace。Cookie 可能已失效。' >&2
-    echo '也可以在脚本顶部手动填写 OPENCODE_WORKSPACE_ID。' >&2
+    echo "${RED}错误：未识别到 Workspace。Cookie 可能已失效。${RESET}" >&2
+    echo "${RED}也可以在脚本顶部手动填写 OPENCODE_WORKSPACE_ID。${RESET}" >&2
     exit 1
   fi
 fi
@@ -82,10 +86,10 @@ raw_balance="$(
 )"
 
 if [[ -z "$raw_balance" ]]; then
-  echo '错误：请求成功，但未能从响应中解析余额。' >&2
-  echo '内部 RPC 格式可能已发生变化。' >&2
+  echo "${RED}错误：请求成功，但未能从响应中解析余额。${RESET}" >&2
+  echo "${RED}内部 RPC 格式可能已发生变化。${RESET}" >&2
   exit 1
 fi
 
-awk -v value="$raw_balance" \
-  'BEGIN { printf "OpenCode Zen balance: $%.2f USD\n", value / 100000000 }'
+awk -v value="$raw_balance" -v green="$GREEN" -v reset="$RESET" \
+  'BEGIN { printf "%sOpenCode Zen balance: $%.2f USD%s\n", green, value / 100000000, reset }'
