@@ -119,7 +119,6 @@ function toolDistribution(
 
 interface UsageTokenReadingProps {
   className?: string;
-  detailsLabel: string;
   kicker: string;
   title: string;
   titleId: string;
@@ -128,7 +127,6 @@ interface UsageTokenReadingProps {
 
 function UsageTokenReading({
   className,
-  detailsLabel,
   kicker,
   title,
   titleId,
@@ -159,7 +157,6 @@ function UsageTokenReading({
         </div>
 
         <div className="usage-lifetime-breakdown">
-          <p>{detailsLabel}</p>
           <dl>
             {TOKEN_DETAILS.map((item) => (
               <div className={`is-${item.prominence}`} key={item.field}>
@@ -476,6 +473,12 @@ export default function TokenUsagePage() {
   const displayedSummaryError = summaryDataKey.current === summaryQueryKey
     ? summaryError
     : null;
+  const analysisToolItems = displayedSummary
+    ? toolDistribution(displayedSummary)
+    : [];
+  const analysisUsedToolCount = displayedSummary?.tools.filter(
+    (item) => item.total_tokens > 0,
+  ).length ?? 0;
   const activeLoading = view === 'today'
     ? todayLoading || (!todaySummary && !todayError)
     : view === 'total'
@@ -545,9 +548,8 @@ export default function TokenUsagePage() {
           {todaySummary && (
             <div className="usage-overview-grid">
               <UsageTokenReading
-                detailsLabel="今日明细"
                 kicker="TOKEN BREAKDOWN"
-                title="Tokens 分布"
+                title="Token 分布"
                 titleId="usage-today-title"
                 totals={todaySummary.totals}
               />
@@ -602,9 +604,8 @@ export default function TokenUsagePage() {
           {overview && (
             <div className="usage-overview-grid">
               <UsageTokenReading
-                detailsLabel="累计明细"
                 kicker="TOKEN BREAKDOWN"
-                title="Tokens 分布"
+                title="Token 分布"
                 titleId="usage-total-title"
                 totals={overview.totals}
               />
@@ -699,9 +700,8 @@ export default function TokenUsagePage() {
               <>
                 <UsageTokenReading
                   className="usage-period-reading"
-                  detailsLabel="区间明细"
-                  kicker="PERIOD BREAKDOWN"
-                  title="区间分布"
+                  kicker="TOKEN BREAKDOWN"
+                  title="Token 分布"
                   titleId="usage-breakdown-title"
                   totals={displayedSummary.totals}
                 />
@@ -716,11 +716,18 @@ export default function TokenUsagePage() {
               <div className="usage-analysis-grid">
                 <UsageTokenReading
                   className="usage-period-reading"
-                  detailsLabel="区间明细"
-                  kicker="PERIOD BREAKDOWN"
-                  title="区间分布"
+                  kicker="TOKEN BREAKDOWN"
+                  title="Token 分布"
                   titleId="usage-breakdown-title"
                   totals={displayedSummary.totals}
+                />
+
+                <UsageDistributionChart
+                  kicker="TOOL SHARE"
+                  title="按工具"
+                  items={analysisToolItems}
+                  centerValue={formatTokenCount(analysisUsedToolCount)}
+                  centerLabel="个工具"
                 />
 
                 <section className="usage-panel usage-tide-panel">

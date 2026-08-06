@@ -1228,7 +1228,7 @@ svg {
 .usage-analysis-grid {
   display: grid;
   gap: 1px;
-  margin-top: 28px;
+  margin-top: 14px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--usage-card-radius);
@@ -1566,14 +1566,6 @@ svg {
     width: min(100% - 64px, 1120px);
   }
 
-  .usage-analysis-grid {
-    grid-template-columns: minmax(0, 1.6fr) minmax(310px, 0.8fr);
-  }
-
-  .usage-analysis .usage-analysis-grid > .usage-period-reading {
-    grid-column: 1 / -1;
-  }
-
   .usage-model-panel {
     max-height: 390px;
     overflow-y: auto;
@@ -1597,7 +1589,7 @@ svg {
   position: sticky;
   z-index: 10;
   top: env(safe-area-inset-top, 0px);
-  padding: 10px 0;
+  padding: 18px 0 8px;
   background: linear-gradient(
     180deg,
     rgba(7, 24, 32, 0.96) 0%,
@@ -1701,7 +1693,7 @@ svg {
 }
 
 .usage-view-panel {
-  padding: 14px 0 36px;
+  padding: 10px 0 36px;
 }
 
 .usage-overview-skeleton {
@@ -1843,12 +1835,6 @@ svg {
   min-width: 0;
   padding-left: 18px;
   border-left: 1px solid rgba(168, 207, 203, 0.16);
-}
-
-.usage-lifetime-breakdown > p {
-  margin: 0 0 9px;
-  color: var(--muted);
-  font-size: 0.58rem;
 }
 
 .usage-lifetime-breakdown dl {
@@ -2027,7 +2013,6 @@ svg {
 }
 
 .usage-analysis {
-  padding-top: 28px;
   border-top: 0;
 }
 
@@ -2052,14 +2037,14 @@ svg {
 }
 
 .usage-analysis .usage-period-reading {
-  margin: 28px 0 28px;
+  margin: 14px 0;
   border: 1px solid var(--line);
   border-radius: var(--usage-card-radius);
 }
 
 .usage-analysis > .usage-skeleton {
-  margin-top: 28px;
-  margin-bottom: 28px;
+  margin-top: 14px;
+  margin-bottom: 14px;
 }
 
 @media (max-width: 420px) {
@@ -2177,10 +2162,6 @@ svg {
     border-left: 0;
   }
 
-  .usage-lifetime-breakdown > p {
-    display: none;
-  }
-
   .usage-period-reading .usage-total-body {
     display: grid;
     grid-template-columns: minmax(220px, 0.72fr) minmax(0, 1.28fr);
@@ -2193,10 +2174,6 @@ svg {
     padding-left: 18px;
     border-top: 0;
     border-left: 1px solid rgba(168, 207, 203, 0.16);
-  }
-
-  .usage-period-reading .usage-lifetime-breakdown > p {
-    display: block;
   }
 
   .usage-distribution-body {
