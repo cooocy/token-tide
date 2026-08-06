@@ -1227,7 +1227,29 @@ svg {
 
 .usage-analysis-grid {
   display: grid;
-  gap: 14px;
+  gap: 1px;
+  margin-top: 28px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--usage-card-radius);
+  background: var(--line);
+}
+
+.usage-analysis .usage-analysis-grid > .usage-tide-panel {
+  border: 0;
+  border-radius: 0;
+}
+
+.usage-analysis .usage-analysis-grid > .usage-model-panel {
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.usage-analysis .usage-analysis-grid > .usage-period-reading {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
 }
 
 .usage-panel {
@@ -1546,7 +1568,10 @@ svg {
 
   .usage-analysis-grid {
     grid-template-columns: minmax(0, 1.6fr) minmax(310px, 0.8fr);
-    align-items: start;
+  }
+
+  .usage-analysis .usage-analysis-grid > .usage-period-reading {
+    grid-column: 1 / -1;
   }
 
   .usage-model-panel {
@@ -2002,7 +2027,7 @@ svg {
 }
 
 .usage-analysis {
-  padding-top: 14px;
+  padding-top: 28px;
   border-top: 0;
 }
 
@@ -2027,12 +2052,13 @@ svg {
 }
 
 .usage-analysis .usage-period-reading {
-  margin: 30px 0 28px;
+  margin: 28px 0 28px;
   border: 1px solid var(--line);
   border-radius: var(--usage-card-radius);
 }
 
 .usage-analysis > .usage-skeleton {
+  margin-top: 28px;
   margin-bottom: 28px;
 }
 

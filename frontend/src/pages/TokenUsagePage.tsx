@@ -695,41 +695,50 @@ export default function TokenUsagePage() {
           )}
 
           {displayedSummary && (
-            <>
-              <UsageTokenReading
-                className="usage-period-reading"
-                detailsLabel="区间明细"
-                kicker="PERIOD BREAKDOWN"
-                title="区间分布"
-                titleId="usage-breakdown-title"
-                totals={displayedSummary.totals}
-              />
+            displayedSummary.totals.event_count === 0 ? (
+              <>
+                <UsageTokenReading
+                  className="usage-period-reading"
+                  detailsLabel="区间明细"
+                  kicker="PERIOD BREAKDOWN"
+                  title="区间分布"
+                  titleId="usage-breakdown-title"
+                  totals={displayedSummary.totals}
+                />
 
-              {displayedSummary.totals.event_count === 0 ? (
                 <section className="empty-panel usage-empty">
                   <span className="empty-symbol" aria-hidden="true">∿</span>
                   <h2>这个时段还没有使用量</h2>
                   <p>切换时间或工具后再看看，采集器上报的数据会显示在这里。</p>
                 </section>
-              ) : (
-                <div className="usage-analysis-grid">
-                  <section className="usage-panel usage-tide-panel">
-                    <div className="section-heading">
-                      <div>
-                        <p className="section-kicker">DAILY USAGE</p>
-                        <h2>每日用量</h2>
-                      </div>
-                    </div>
-                    <UsageTideChart days={displayedSummary.timeline} />
-                  </section>
+              </>
+            ) : (
+              <div className="usage-analysis-grid">
+                <UsageTokenReading
+                  className="usage-period-reading"
+                  detailsLabel="区间明细"
+                  kicker="PERIOD BREAKDOWN"
+                  title="区间分布"
+                  titleId="usage-breakdown-title"
+                  totals={displayedSummary.totals}
+                />
 
-                  <ModelUsagePanel
-                    models={displayedSummary.models}
-                    totalTokens={displayedSummary.totals.total_tokens}
-                  />
-                </div>
-              )}
-            </>
+                <section className="usage-panel usage-tide-panel">
+                  <div className="section-heading">
+                    <div>
+                      <p className="section-kicker">DAILY USAGE</p>
+                      <h2>每日用量</h2>
+                    </div>
+                  </div>
+                  <UsageTideChart days={displayedSummary.timeline} />
+                </section>
+
+                <ModelUsagePanel
+                  models={displayedSummary.models}
+                  totalTokens={displayedSummary.totals.total_tokens}
+                />
+              </div>
+            )
           )}
         </section>
       )}
