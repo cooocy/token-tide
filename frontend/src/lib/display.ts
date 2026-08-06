@@ -90,9 +90,8 @@ export function formatTokenCount(value: number): string {
 }
 
 const TOKEN_UNITS = [
-  { divisor: 1_000, suffix: 'K' },
-  { divisor: 1_000_000, suffix: 'M' },
-  { divisor: 1_000_000_000, suffix: 'B' },
+  { divisor: 10_000, suffix: 'W' },
+  { divisor: 100_000_000, suffix: 'E' },
 ] as const;
 
 export function formatCompactTokenCount(value: number): string {
@@ -105,15 +104,13 @@ export function formatCompactTokenCount(value: number): string {
     return formatTokenCount(value);
   }
 
-  let unitIndex = absoluteValue >= TOKEN_UNITS[2].divisor
-    ? 2
-    : absoluteValue >= TOKEN_UNITS[1].divisor
-      ? 1
-      : 0;
+  let unitIndex = absoluteValue >= TOKEN_UNITS[1].divisor ? 1 : 0;
   let scaledValue = value / TOKEN_UNITS[unitIndex].divisor;
+  const nextUnit = TOKEN_UNITS[unitIndex + 1];
   if (
-    Math.abs(Math.round(scaledValue * 10) / 10) >= 1_000 &&
-    unitIndex < TOKEN_UNITS.length - 1
+    nextUnit &&
+    Math.round(Math.abs(scaledValue) * 10) / 10 >=
+      nextUnit.divisor / TOKEN_UNITS[unitIndex].divisor
   ) {
     unitIndex += 1;
     scaledValue = value / TOKEN_UNITS[unitIndex].divisor;
