@@ -1804,6 +1804,10 @@ svg {
   white-space: nowrap;
 }
 
+.usage-total-metric-row > strong.is-long {
+  font-size: clamp(2rem, 8vw, 3.35rem);
+}
+
 .usage-total-meta {
   display: flex;
   min-width: 0;

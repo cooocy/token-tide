@@ -118,5 +118,6 @@ export function formatCompactTokenCount(value: number): string {
 
   return `${new Intl.NumberFormat('en-US', {
     maximumFractionDigits: 1,
+    useGrouping: false,
   }).format(scaledValue)}${TOKEN_UNITS[unitIndex].suffix}`;
 }

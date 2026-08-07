@@ -132,6 +132,8 @@ function UsageTokenReading({
   titleId,
   totals,
 }: UsageTokenReadingProps) {
+  const compactTotal = formatCompactTokenCount(totals.total_tokens);
+
   return (
     <section
       className={`usage-total-reading${className ? ` ${className}` : ''}`}
@@ -142,9 +144,10 @@ function UsageTokenReading({
       <div className="usage-total-body">
         <div className="usage-total-metric-row">
           <strong
+            className={compactTotal.length >= 7 ? 'is-long' : undefined}
             aria-label={`${formatTokenCount(totals.total_tokens)} Tokens`}
           >
-            {formatCompactTokenCount(totals.total_tokens)}
+            {compactTotal}
           </strong>
           <div className="usage-total-meta">
             <span className="usage-total-exact">
