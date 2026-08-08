@@ -2,29 +2,30 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
   type CSSProperties,
   type KeyboardEvent,
 } from 'react';
 import { type TokenUsageCalendarDay } from '@/api/tokenUsage';
-import {
-  formatCompactTokenCount,
-  formatTokenCount,
-} from '@/lib/display';
+import { formatTokenCount } from '@/lib/display';
 
-const WEEK_COUNT = 53;
 const DAYS_PER_WEEK = 7;
-const CALENDAR_DATE_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
-  year: 'numeric',
-  month: 'long',
-  day: 'numeric',
-  weekday: 'short',
-});
+const INTENSITY_THRESHOLDS = [2_500_000, 20_000_000, 40_000_000] as const;
+const INTENSITY_LABELS = [
+  '无使用',
+  '1～250W',
+  '>250W～2000W',
+  '>2000W～4000W',
+  '>4000W',
+] as const;
 
 interface UsageCalendarProps {
+  availableYears: number[];
   days: TokenUsageCalendarDay[];
-  endDate: string;
-  startDate: string;
+  onSelectDate: (date: string) => void;
+  onSelectYear: (year: number) => void;
+  selectedDate: string;
+  todayDate: string;
+  year: number;
 }
 
 interface CalendarCell {
@@ -51,82 +52,97 @@ function addDays(value: Date, amount: number): Date {
   return next;
 }
 
-function formatCalendarDate(value: string): string {
-  return CALENDAR_DATE_FORMATTER.format(parseDateKey(value));
-}
-
-function intensityLevel(value: number, maximum: number): number {
-  if (value <= 0 || maximum <= 0) {
+export function usageIntensityLevel(value: number): number {
+  if (value <= 0) {
     return 0;
   }
-  return Math.min(
-    4,
-    Math.max(1, Math.ceil((Math.log1p(value) / Math.log1p(maximum)) * 4)),
-  );
+  if (value <= INTENSITY_THRESHOLDS[0]) {
+    return 1;
+  }
+  if (value <= INTENSITY_THRESHOLDS[1]) {
+    return 2;
+  }
+  if (value <= INTENSITY_THRESHOLDS[2]) {
+    return 3;
+  }
+  return 4;
+}
+
+export function usageIntensityLabel(value: number): string {
+  return INTENSITY_LABELS[usageIntensityLevel(value)];
 }
 
 export default function UsageCalendar({
+  availableYears,
   days,
-  endDate,
-  startDate,
+  onSelectDate,
+  onSelectYear,
+  selectedDate,
+  todayDate,
+  year,
 }: UsageCalendarProps) {
-  const [selectedDate, setSelectedDate] = useState(endDate);
-  const [previewDate, setPreviewDate] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const usageByDate = useMemo(
     () => new Map(days.map((day) => [day.date, day])),
     [days],
   );
   const cells = useMemo<CalendarCell[]>(() => {
-    const start = parseDateKey(startDate);
-    return Array.from({ length: WEEK_COUNT * DAYS_PER_WEEK }, (_, index) => {
-      const date = addDays(start, index);
+    const gridEnd = todayDate.startsWith(`${year}-`)
+      ? parseDateKey(todayDate)
+      : new Date(year, 11, 31);
+    const gridStart = addDays(
+      gridEnd,
+      -((gridEnd.getDay() + 6) % 7) - 52 * DAYS_PER_WEEK,
+    );
+    const result: CalendarCell[] = [];
+    let current = gridStart;
+    while (current <= gridEnd) {
+      const date = new Date(current);
       const dateKey = formatDateKey(date);
-      return {
+      result.push({
         date,
         dateKey,
-        usage: dateKey <= endDate ? usageByDate.get(dateKey) ?? null : null,
-      };
-    });
-  }, [endDate, startDate, usageByDate]);
-  const weeks = useMemo(
-    () => Array.from(
-      { length: WEEK_COUNT },
-      (_, index) => cells.slice(index * DAYS_PER_WEEK, (index + 1) * DAYS_PER_WEEK),
-    ),
-    [cells],
-  );
-  const monthLabels = useMemo(() => weeks.flatMap((week, index) => {
-    const firstOfMonth = week.find((cell) => cell.date.getDate() === 1);
-    const labelDate = firstOfMonth ?? (index === 0 ? week[0] : null);
-    return labelDate
+        usage: usageByDate.get(dateKey) ?? null,
+      });
+      current = addDays(current, 1);
+    }
+    return result;
+  }, [todayDate, usageByDate, year]);
+  const weekCount = Math.ceil(cells.length / DAYS_PER_WEEK);
+  const gridWidth = weekCount * 16 - 4;
+  const monthLabels = useMemo(() => cells.flatMap((cell, index) => (
+    cell.date.getDate() === 1
       ? [{
-        column: index + 1,
-        label: `${labelDate.date.getMonth() + 1}月`,
+        column: Math.floor(index / DAYS_PER_WEEK) + 1,
+        label: `${cell.date.getMonth() + 1}月`,
       }]
-      : [];
-  }), [weeks]);
-  const maximum = Math.max(...days.map((day) => day.total_tokens), 0);
+      : []
+  )), [cells]);
   const activeDayCount = days.filter((day) => day.total_tokens > 0).length;
-  const displayedDate = previewDate ?? selectedDate;
-  const displayedUsage = usageByDate.get(displayedDate) ?? {
-    date: displayedDate,
-    event_count: 0,
-    total_tokens: 0,
-  };
-
-  useEffect(() => {
-    setSelectedDate(endDate);
-    setPreviewDate(null);
-  }, [endDate, startDate]);
 
   useEffect(() => {
     const container = scrollRef.current;
-    if (!container) {
+    const target = container?.querySelector<HTMLButtonElement>(
+      `button[data-date="${selectedDate}"]`,
+    );
+    if (!container || !target) {
       return;
     }
-    container.scrollLeft = container.scrollWidth;
-  }, [days]);
+    const centeredLeft = target.offsetLeft
+      - (container.clientWidth - target.offsetWidth) / 2;
+    const todayTarget = todayDate.startsWith(`${year}-`)
+      ? container.querySelector<HTMLButtonElement>(
+        `button[data-date="${todayDate}"]`,
+      )
+      : null;
+    const latestUsefulLeft = todayTarget
+      ? todayTarget.offsetLeft + todayTarget.offsetWidth - container.clientWidth
+      : container.scrollWidth - container.clientWidth;
+    container.scrollLeft = Math.max(
+      0,
+      Math.min(centeredLeft, latestUsefulLeft),
+    );
+  }, [days, selectedDate, todayDate, year]);
 
   const focusDate = (
     event: KeyboardEvent<HTMLButtonElement>,
@@ -142,130 +158,129 @@ export default function UsageCalendar({
     } else if (event.key === 'ArrowRight') {
       nextDate = addDays(nextDate, 7);
     } else if (event.key === 'Home') {
-      nextDate = parseDateKey(startDate);
+      nextDate = new Date(year, 0, 1);
     } else if (event.key === 'End') {
-      nextDate = parseDateKey(endDate);
+      const yearEndKey = `${year}-12-31`;
+      nextDate = parseDateKey(yearEndKey < todayDate ? yearEndKey : todayDate);
     } else {
       return;
     }
     event.preventDefault();
     const nextDateKey = formatDateKey(nextDate);
-    if (nextDateKey < startDate || nextDateKey > endDate) {
-      return;
-    }
     const target = event.currentTarget
       .closest('[role="grid"]')
       ?.querySelector<HTMLButtonElement>(`button[data-date="${nextDateKey}"]`);
-    target?.focus();
-    setSelectedDate(nextDateKey);
+    if (!target) {
+      return;
+    }
+    target.focus();
+    onSelectDate(nextDateKey);
   };
 
+  const gridStyle = {
+    '--calendar-grid-width': `${gridWidth}px`,
+    '--calendar-week-count': weekCount,
+  } as CSSProperties;
+
   return (
-    <section className="usage-calendar-card" aria-labelledby="usage-calendar-title">
-      <div className="usage-calendar-heading">
-        <div>
-          <p className="section-kicker">CONTRIBUTION CALENDAR</p>
-          <h2 id="usage-calendar-title">使用日历</h2>
-        </div>
-        <span>过去 53 周 · {activeDayCount} 个活跃日</span>
-      </div>
-
-      <div className="usage-calendar-readout" aria-live="polite">
-        <span>{formatCalendarDate(displayedDate)}</span>
-        <div>
-          <strong
-            aria-label={`${formatTokenCount(displayedUsage.total_tokens)} Tokens`}
-            title={formatTokenCount(displayedUsage.total_tokens)}
+    <div className="usage-calendar-layout">
+      <nav className="usage-calendar-years" aria-label="日历年份">
+        {availableYears.map((availableYear) => (
+          <button
+            type="button"
+            className={availableYear === year ? 'is-active' : undefined}
+            aria-pressed={availableYear === year}
+            onClick={() => onSelectYear(availableYear)}
+            key={availableYear}
           >
-            {formatCompactTokenCount(displayedUsage.total_tokens)} Tokens
-          </strong>
-          <small>
-            {formatTokenCount(displayedUsage.total_tokens)} Tokens · {' '}
-            {formatTokenCount(displayedUsage.event_count)} 次请求
-          </small>
-        </div>
-      </div>
+            {availableYear}
+          </button>
+        ))}
+      </nav>
 
-      <div className="usage-calendar-frame">
-        <div className="usage-calendar-weekdays" aria-hidden="true">
-          {['', '一', '', '三', '', '五', ''].map((label, index) => (
-            <span key={`${label}-${index}`}>{label}</span>
-          ))}
+      <section className="usage-calendar-card" aria-labelledby="usage-calendar-title">
+        <div className="usage-calendar-heading">
+          <div>
+            <p className="section-kicker">CONTRIBUTION CALENDAR</p>
+            <h2 id="usage-calendar-title">{year} 使用日历</h2>
+          </div>
+          <span>{activeDayCount} 个活跃日</span>
         </div>
-        <div className="usage-calendar-scroll" ref={scrollRef}>
-          <div className="usage-calendar-content">
-            <div className="usage-calendar-months" aria-hidden="true">
-              {monthLabels.map((item) => (
-                <span
-                  style={{ gridColumn: item.column } as CSSProperties}
-                  key={`${item.column}-${item.label}`}
-                >
-                  {item.label}
-                </span>
-              ))}
-            </div>
-            <div
-              className="usage-calendar-grid"
-              role="grid"
-              aria-label="最近 53 周 Token 用量"
-            >
-              {cells.map((cell) => {
-                if (cell.dateKey > endDate) {
+
+        <div className="usage-calendar-frame">
+          <div className="usage-calendar-weekdays" aria-hidden="true">
+            {['', '一', '', '三', '', '五', ''].map((label, index) => (
+              <span key={`${label}-${index}`}>{label}</span>
+            ))}
+          </div>
+          <div className="usage-calendar-scroll" ref={scrollRef}>
+            <div className="usage-calendar-content" style={gridStyle}>
+              <div className="usage-calendar-months" aria-hidden="true">
+                {monthLabels.map((item) => (
+                  <span
+                    style={{ gridColumn: item.column } as CSSProperties}
+                    key={`${item.column}-${item.label}`}
+                  >
+                    {item.label}
+                  </span>
+                ))}
+              </div>
+              <div
+                className="usage-calendar-grid"
+                role="grid"
+                aria-label={`${year} 年 Token 用量`}
+              >
+                {cells.map((cell) => {
+                  const tokens = cell.usage?.total_tokens ?? 0;
+                  const requests = cell.usage?.event_count ?? 0;
+                  const level = usageIntensityLevel(tokens);
+                  const isSelected = cell.dateKey === selectedDate;
                   return (
-                    <span
-                      className="usage-calendar-day is-future"
-                      aria-hidden="true"
+                    <button
+                      type="button"
+                      className={`usage-calendar-day is-level-${level}${
+                        isSelected ? ' is-selected' : ''
+                      }`}
+                      role="gridcell"
+                      tabIndex={isSelected ? 0 : -1}
+                      data-date={cell.dateKey}
+                      aria-selected={isSelected}
+                      aria-label={`${cell.dateKey}，${formatTokenCount(tokens)} Tokens，${
+                        formatTokenCount(requests)
+                      } 次请求，强度 ${level}`}
+                      title={`${formatTokenCount(tokens)} Tokens · ${
+                        formatTokenCount(requests)
+                      } 次请求`}
+                      onClick={() => onSelectDate(cell.dateKey)}
+                      onKeyDown={(event) => focusDate(event, cell.dateKey)}
                       key={cell.dateKey}
                     />
                   );
-                }
-                const tokens = cell.usage?.total_tokens ?? 0;
-                const requests = cell.usage?.event_count ?? 0;
-                const level = intensityLevel(tokens, maximum);
-                const isSelected = cell.dateKey === selectedDate;
-                return (
-                  <button
-                    type="button"
-                    className={`usage-calendar-day is-level-${level}${
-                      isSelected ? ' is-selected' : ''
-                    }`}
-                    role="gridcell"
-                    tabIndex={isSelected ? 0 : -1}
-                    data-date={cell.dateKey}
-                    aria-selected={isSelected}
-                    aria-label={`${formatCalendarDate(cell.dateKey)}，${
-                      formatTokenCount(tokens)
-                    } Tokens，${formatTokenCount(requests)} 次请求`}
-                    title={`${formatTokenCount(tokens)} Tokens · ${
-                      formatTokenCount(requests)
-                    } 次请求`}
-                    onClick={() => setSelectedDate(cell.dateKey)}
-                    onFocus={() => setPreviewDate(cell.dateKey)}
-                    onBlur={() => setPreviewDate(null)}
-                    onMouseEnter={() => setPreviewDate(cell.dateKey)}
-                    onMouseLeave={() => setPreviewDate(null)}
-                    onKeyDown={(event) => focusDate(event, cell.dateKey)}
-                    key={cell.dateKey}
-                  />
-                );
-              })}
+                })}
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="usage-calendar-footer">
-        {activeDayCount === 0 && (
-          <p>还没有 Token 用量记录，采集器上报后会显示在这里。</p>
-        )}
-        <div className="usage-calendar-legend" aria-label="用量强度从少到多">
-          <span>少</span>
-          {[0, 1, 2, 3, 4].map((level) => (
-            <i className={`is-level-${level}`} aria-hidden="true" key={level} />
-          ))}
-          <span>多</span>
+        <div className="usage-calendar-footer">
+          {activeDayCount === 0 && (
+            <p>这一年还没有 Token 用量记录。</p>
+          )}
+          <div className="usage-calendar-legend" aria-label="固定用量强度分档">
+            <span>少</span>
+            {INTENSITY_LABELS.map((label, level) => (
+              <i
+                className={`is-level-${level}`}
+                aria-label={label}
+                role="img"
+                title={label}
+                key={label}
+              />
+            ))}
+            <span>多</span>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }

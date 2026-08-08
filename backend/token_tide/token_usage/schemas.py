@@ -108,6 +108,7 @@ class TokenUsageCalendar(BaseModel):
     start_date: date
     end_date: date
     timezone: str
+    available_years: list[int]
     days: list[TokenUsageCalendarDay]
 
 

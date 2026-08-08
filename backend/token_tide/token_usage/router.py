@@ -32,6 +32,17 @@ router = APIRouter(prefix="/token-usage")
 Service = Annotated[TokenUsageService, Depends(get_token_usage_service)]
 
 
+def resolve_timezone(
+    timezone_name: str,
+    error_code: int,
+    error_message: str,
+) -> ZoneInfo:
+    try:
+        return ZoneInfo(timezone_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise ApplicationError(422, error_code, error_message) from None
+
+
 @router.get(
     "/card.svg",
     response_class=Response,
@@ -86,14 +97,11 @@ def find_calendar(
     end_date: date = Query(alias="end-date"),
     timezone: str = Query(min_length=1, max_length=64),
 ) -> R[TokenUsageCalendar]:
-    try:
-        calendar_timezone = ZoneInfo(timezone)
-    except (ZoneInfoNotFoundError, ValueError):
-        raise ApplicationError(
-            422,
-            42208,
-            "Unknown token usage calendar timezone",
-        ) from None
+    calendar_timezone = resolve_timezone(
+        timezone,
+        42208,
+        "Unknown token usage calendar timezone",
+    )
     return ok(
         service.calendar(
             start_date=start_date,
@@ -118,13 +126,24 @@ def find_summary(
         le=840,
     ),
     tool: TokenUsageTool | None = None,
+    timezone: str | None = Query(default=None, min_length=1, max_length=64),
 ) -> R[TokenUsageSummary]:
+    calendar_timezone = (
+        resolve_timezone(
+            timezone,
+            42209,
+            "Unknown token usage summary timezone",
+        )
+        if timezone is not None
+        else None
+    )
     return ok(
         service.summary(
             tool=tool,
             start_time=start_time,
             end_time=end_time,
             timezone_offset_minutes=timezone_offset_minutes,
+            calendar_timezone=calendar_timezone,
         )
     )
 

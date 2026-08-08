@@ -8,6 +8,7 @@ from token_tide.main import application_info, main
 from token_tide.response import ApplicationError
 from token_tide.token_usage.router import (
     find_calendar,
+    find_summary,
     router as token_usage_router,
 )
 
@@ -96,5 +97,17 @@ def test_token_usage_calendar_rejects_unknown_timezone() -> None:
             service=Mock(),
             start_date=date(2026, 8, 1),
             end_date=date(2026, 8, 8),
+            timezone="Mars/Olympus",
+        )
+
+
+def test_token_usage_summary_rejects_unknown_timezone() -> None:
+    with pytest.raises(ApplicationError, match="Unknown"):
+        find_summary(
+            service=Mock(),
+            start_time=Mock(),
+            end_time=Mock(),
+            timezone_offset_minutes=0,
+            tool=None,
             timezone="Mars/Olympus",
         )

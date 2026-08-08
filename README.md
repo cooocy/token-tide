@@ -189,6 +189,7 @@ tool                       # 可选：claude、codex、opencode 或 pi
 start-time                 # 必填，包含时区
 end-time                   # 必填，包含时区；查询区间右侧不包含
 timezone-offset-minutes    # 必填，本地时间相对 UTC 的分钟偏移
+timezone                   # 可选，IANA 时区；按历史日期日界线聚合时建议传入
 ```
 
 查询跨度最大 31 天。响应包含区间总量、Token 类型明细、各工具汇总、按查看者本地
@@ -209,7 +210,8 @@ timezone      # 必填，IANA 时区，例如 Asia/Shanghai
 ```
 
 查询最多覆盖 371 个自然日。接口按所选时区的日界线在数据库聚合，返回零值补齐的每日
-请求数和 `total_tokens`，用于前端最近 53 周贡献日历；它不返回原始事件或工具明细。
+请求数、`total_tokens` 和从最早数据年份到当前年份的 `available_years`；它不返回原始
+事件或工具明细。
 
 ### GitHub Profile 用量仪表
 
@@ -318,9 +320,11 @@ Alembic migration；部署时需要同步更新 Backend、Frontend 和执行采�
 
 ## 前端
 
-前端提供余额看板、余额历史和 Token 用量查看页。Token 用量包含今日、总计、用量分析
-和日历四个视图；分析视图默认查看最近 7 天，可切换今天、30 天以及 Claude、Codex、
-OpenCode、Pi 单个工具。日历视图按浏览器本地日界线展示最近 53 周的整体 Token 活跃度。
+前端提供余额看板、余额历史和 Token 用量查看页。Token 用量按今日、日历、总计、用量
+分析排列；分析视图默认查看最近 7 天，可切换今天、30 天以及 Claude、Codex、OpenCode、
+Pi 单个工具。日历视图按浏览器本地日界线连续展示 53 周 Token 活跃度，支持年份切换；
+当前年份以今天为终点，历史年份以 12 月 31 日为终点，跨年窗口无缝衔接真实数据，并在
+日历下方展示选中日期的 Token、工具和模型明细。
 
 ```bash
 cd frontend

@@ -54,6 +54,7 @@ export interface TokenUsageCalendar {
   start_date: string;
   end_date: string;
   timezone: string;
+  available_years: number[];
   days: TokenUsageCalendarDay[];
 }
 
@@ -61,6 +62,7 @@ export interface TokenUsageSummaryQuery {
   startTime: string;
   endTime: string;
   timezoneOffsetMinutes: number;
+  timezone?: string;
   tool?: TokenUsageTool;
 }
 
@@ -83,6 +85,7 @@ export function findTokenUsageSummary(
       'start-time': query.startTime,
       'end-time': query.endTime,
       'timezone-offset-minutes': query.timezoneOffsetMinutes,
+      timezone: query.timezone,
     },
   });
 }

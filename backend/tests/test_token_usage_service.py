@@ -432,9 +432,11 @@ def test_calendar_aggregates_local_days_and_zero_fills_across_dst(
         end_date=date(2026, 3, 8),
         calendar_timezone=ZoneInfo("America/New_York"),
         timezone_name="America/New_York",
+        now=datetime(2026, 8, 8, tzinfo=UTC),
     )
 
     assert calendar.timezone == "America/New_York"
+    assert calendar.available_years == [2026]
     assert [day.date.isoformat() for day in calendar.days] == [
         "2026-03-06",
         "2026-03-07",
@@ -442,6 +444,50 @@ def test_calendar_aggregates_local_days_and_zero_fills_across_dst(
     ]
     assert [day.event_count for day in calendar.days] == [0, 1, 1]
     assert [day.total_tokens for day in calendar.days] == [0, 10, 20]
+
+
+def test_calendar_lists_continuous_available_years(
+    service: tuple[TokenUsageService, sessionmaker[Session]],
+) -> None:
+    usage_service, _ = service
+    usage_service.ingest(
+        TokenUsageTool.CODEX,
+        TokenUsageBatchInput(
+            events=[
+                event(
+                    occurred_at=datetime(2023, 12, 31, 16, tzinfo=UTC),
+                    reported_at=datetime(2023, 12, 31, 17, tzinfo=UTC),
+                )
+            ],
+            next_cursor={"version": 1},
+        ),
+    )
+
+    calendar = usage_service.calendar(
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 12, 31),
+        calendar_timezone=ZoneInfo("Asia/Shanghai"),
+        timezone_name="Asia/Shanghai",
+        now=datetime(2026, 8, 8, tzinfo=UTC),
+    )
+
+    assert calendar.available_years == [2026, 2025, 2024]
+
+
+def test_empty_calendar_only_lists_current_year(
+    service: tuple[TokenUsageService, sessionmaker[Session]],
+) -> None:
+    usage_service, _ = service
+
+    calendar = usage_service.calendar(
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 12, 31),
+        calendar_timezone=ZoneInfo("Asia/Shanghai"),
+        timezone_name="Asia/Shanghai",
+        now=datetime(2026, 8, 8, tzinfo=UTC),
+    )
+
+    assert calendar.available_years == [2026]
 
 
 @pytest.mark.parametrize(

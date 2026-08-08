@@ -13,7 +13,10 @@ import {
 } from '@/api/tokenUsage';
 import ProductHeader from '@/components/ProductHeader';
 import ProductNavigation from '@/components/ProductNavigation';
-import UsageCalendar from '@/components/UsageCalendar';
+import UsageCalendar, {
+  usageIntensityLabel,
+  usageIntensityLevel,
+} from '@/components/UsageCalendar';
 import UsageDistributionChart, {
   type UsageDistributionItem,
 } from '@/components/UsageDistributionChart';
@@ -56,9 +59,9 @@ const USAGE_VIEWS: {
   label: string;
 }[] = [
   { value: 'today', kicker: 'TODAY', label: '今日' },
+  { value: 'calendar', kicker: 'CALENDAR', label: '日历' },
   { value: 'total', kicker: 'ALL-TIME', label: '总计' },
   { value: 'analysis', kicker: 'ANALYSIS', label: '用量分析' },
-  { value: 'calendar', kicker: 'CALENDAR', label: '日历' },
 ];
 const TOKEN_DETAILS = [
   { field: 'input_tokens', label: '输入', prominence: 'primary' },
@@ -117,27 +120,79 @@ function formatLocalDate(value: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function calendarRange(): {
-  startDate: string;
-  endDate: string;
-  timezone: string;
-} {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const start = new Date(today);
-  const daysSinceMonday = (start.getDay() + 6) % 7;
-  start.setDate(start.getDate() - daysSinceMonday - 52 * 7);
+function browserTimezone(): string {
   let timezone = 'Asia/Shanghai';
   try {
     timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || timezone;
   } catch {
-    // The fallback keeps the calendar usable in restricted browser runtimes.
+    // The fallback keeps date boundaries usable in restricted browser runtimes.
   }
+  return timezone;
+}
+
+function resolveCalendarYear(value: string | null, currentYear: number): number {
+  if (!value || !/^\d{4}$/.test(value)) {
+    return currentYear;
+  }
+  const year = Number(value);
+  return year >= 1970 && year <= currentYear ? year : currentYear;
+}
+
+function calendarYearRange(
+  year: number,
+  currentYear: number,
+  todayDate: string,
+  timezone: string,
+): {
+  startDate: string;
+  endDate: string;
+  timezone: string;
+} {
+  const [todayYear, todayMonth, todayDay] = todayDate.split('-').map(Number);
+  const rangeEnd = year === currentYear
+    ? new Date(todayYear, todayMonth - 1, todayDay)
+    : new Date(year, 11, 31);
+  const rangeStart = new Date(rangeEnd);
+  rangeStart.setDate(
+    rangeStart.getDate() - ((rangeStart.getDay() + 6) % 7) - 52 * 7,
+  );
   return {
-    startDate: formatLocalDate(start),
-    endDate: formatLocalDate(today),
+    startDate: formatLocalDate(rangeStart),
+    endDate: formatLocalDate(rangeEnd),
     timezone,
   };
+}
+
+function selectedDayRange(
+  dateKey: string,
+  todayDate: string,
+  timezone: string,
+): {
+  startTime: string;
+  endTime: string;
+  timezoneOffsetMinutes: number;
+  timezone: string;
+} {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const start = new Date(year, month - 1, day);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return {
+    startTime: start.toISOString(),
+    endTime: dateKey === todayDate ? new Date().toISOString() : end.toISOString(),
+    timezoneOffsetMinutes: -start.getTimezoneOffset(),
+    timezone,
+  };
+}
+
+function formatCalendarDay(dateKey: string): string {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'short',
+  }).format(new Date(year, month - 1, day));
 }
 
 function toolDistribution(
@@ -290,29 +345,55 @@ export default function TokenUsagePage() {
   const tool = isTool(searchParams.get('tool'))
     ? searchParams.get('tool') as ToolFilter
     : 'all';
+  const today = useMemo(() => new Date(), []);
+  const todayDate = formatLocalDate(today);
+  const currentYear = today.getFullYear();
+  const calendarTimezone = useMemo(browserTimezone, []);
+  const calendarYear = resolveCalendarYear(
+    searchParams.get('year'),
+    currentYear,
+  );
   const [todaySummary, setTodaySummary] = useState<TokenUsageSummary | null>(
     null,
   );
   const [overview, setOverview] = useState<TokenUsageOverview | null>(null);
   const [summary, setSummary] = useState<TokenUsageSummary | null>(null);
   const [calendar, setCalendar] = useState<TokenUsageCalendar | null>(null);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState('');
+  const [calendarDaySummary, setCalendarDaySummary] = useState<
+    TokenUsageSummary | null
+  >(null);
   const [todayLoading, setTodayLoading] = useState(false);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [calendarLoading, setCalendarLoading] = useState(false);
+  const [calendarDayLoading, setCalendarDayLoading] = useState(false);
   const [todayError, setTodayError] = useState<string | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [calendarError, setCalendarError] = useState<string | null>(null);
+  const [calendarDayError, setCalendarDayError] = useState<string | null>(null);
   const todayRequestId = useRef(0);
   const overviewRequestId = useRef(0);
   const summaryRequestId = useRef(0);
   const calendarRequestId = useRef(0);
+  const calendarDayRequestId = useRef(0);
   const summaryDataKey = useRef<string | null>(null);
+  const calendarDataKey = useRef<string | null>(null);
+  const calendarDayDataKey = useRef<string | null>(null);
   const toolSegmentsRef = useRef<HTMLDivElement | null>(null);
   const activeToolButtonRef = useRef<HTMLButtonElement | null>(null);
   const summaryQueryKey = `${period}:${tool}`;
-  const calendarQuery = useMemo(calendarRange, []);
+  const calendarQueryKey = `${calendarYear}:${calendarTimezone}`;
+  const calendarQuery = useMemo(
+    () => calendarYearRange(
+      calendarYear,
+      currentYear,
+      todayDate,
+      calendarTimezone,
+    ),
+    [calendarTimezone, calendarYear, currentYear, todayDate],
+  );
 
   const loadTodaySummary = useCallback(async (): Promise<void> => {
     const currentRequestId = todayRequestId.current + 1;
@@ -394,8 +475,10 @@ export default function TokenUsagePage() {
   const loadCalendar = useCallback(async (): Promise<void> => {
     const currentRequestId = calendarRequestId.current + 1;
     calendarRequestId.current = currentRequestId;
+    calendarDataKey.current = calendarQueryKey;
     setCalendarLoading(true);
     setCalendarError(null);
+    setCalendar(null);
     try {
       const data = await findTokenUsageCalendar(calendarQuery);
       if (calendarRequestId.current === currentRequestId) {
@@ -413,7 +496,44 @@ export default function TokenUsagePage() {
         setCalendarLoading(false);
       }
     }
-  }, [calendarQuery]);
+  }, [calendarQuery, calendarQueryKey]);
+
+  const loadCalendarDaySummary = useCallback(
+    async (dateKey: string): Promise<void> => {
+      const currentRequestId = calendarDayRequestId.current + 1;
+      calendarDayRequestId.current = currentRequestId;
+      calendarDayDataKey.current = dateKey;
+      setCalendarDayLoading(true);
+      setCalendarDayError(null);
+      setCalendarDaySummary(null);
+      if (dateKey === todayDate && todaySummary) {
+        setCalendarDaySummary(todaySummary);
+        setCalendarDayLoading(false);
+        return;
+      }
+      try {
+        const data = await findTokenUsageSummary(
+          selectedDayRange(dateKey, todayDate, calendarTimezone),
+        );
+        if (calendarDayRequestId.current === currentRequestId) {
+          setCalendarDaySummary(data);
+        }
+      } catch (loadError) {
+        if (calendarDayRequestId.current === currentRequestId) {
+          setCalendarDayError(
+            loadError instanceof Error
+              ? loadError.message
+              : '当日用量明细加载失败',
+          );
+        }
+      } finally {
+        if (calendarDayRequestId.current === currentRequestId) {
+          setCalendarDayLoading(false);
+        }
+      }
+    },
+    [calendarTimezone, todayDate, todaySummary],
+  );
 
   useEffect(() => {
     if (requestedView === view) {
@@ -423,6 +543,19 @@ export default function TokenUsagePage() {
     nextSearchParams.set('view', view);
     setSearchParams(nextSearchParams, { replace: true });
   }, [requestedView, searchParams, setSearchParams, view]);
+
+  useEffect(() => {
+    if (view !== 'calendar') {
+      return;
+    }
+    const requestedYear = searchParams.get('year');
+    if (requestedYear === String(calendarYear)) {
+      return;
+    }
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.set('year', String(calendarYear));
+    setSearchParams(nextSearchParams, { replace: true });
+  }, [calendarYear, searchParams, setSearchParams, view]);
 
   useEffect(() => {
     if (view !== 'today' || todaySummary || todayError || todayLoading) {
@@ -455,11 +588,101 @@ export default function TokenUsagePage() {
   ]);
 
   useEffect(() => {
-    if (view !== 'calendar' || calendar || calendarError || calendarLoading) {
+    const hasCurrentState = calendarDataKey.current === calendarQueryKey
+      && Boolean(calendar || calendarError || calendarLoading);
+    if (view !== 'calendar' || hasCurrentState) {
       return;
     }
     void loadCalendar();
-  }, [calendar, calendarError, calendarLoading, loadCalendar, view]);
+  }, [
+    calendar,
+    calendarError,
+    calendarLoading,
+    calendarQueryKey,
+    loadCalendar,
+    view,
+  ]);
+
+  useEffect(() => {
+    if (
+      view !== 'calendar'
+      || calendarDataKey.current !== calendarQueryKey
+      || !calendar
+      || calendar.available_years.includes(calendarYear)
+    ) {
+      return;
+    }
+    const fallbackYear = calendar.available_years[
+      calendar.available_years.length - 1
+    ] ?? currentYear;
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.set('year', String(fallbackYear));
+    setSearchParams(nextSearchParams, { replace: true });
+  }, [
+    calendar,
+    calendarQueryKey,
+    calendarYear,
+    currentYear,
+    searchParams,
+    setSearchParams,
+    view,
+  ]);
+
+  useEffect(() => {
+    if (
+      view !== 'calendar'
+      || calendarDataKey.current !== calendarQueryKey
+      || !calendar
+      || (
+        selectedCalendarDate >= calendar.start_date
+        && selectedCalendarDate <= calendar.end_date
+      )
+    ) {
+      return;
+    }
+    const defaultDate = calendarYear === currentYear
+      ? todayDate
+      : [...calendar.days].reverse().find(
+        (day) => day.date.startsWith(`${calendarYear}-`)
+          && day.total_tokens > 0,
+      )?.date
+        ?? `${calendarYear}-12-31`;
+    setSelectedCalendarDate(defaultDate);
+  }, [
+    calendar,
+    calendarQueryKey,
+    calendarYear,
+    currentYear,
+    selectedCalendarDate,
+    todayDate,
+    view,
+  ]);
+
+  useEffect(() => {
+    const hasCurrentState = calendarDayDataKey.current === selectedCalendarDate
+      && Boolean(
+        calendarDaySummary || calendarDayError || calendarDayLoading,
+      );
+    if (
+      view !== 'calendar'
+      || !selectedCalendarDate
+      || calendarDataKey.current !== calendarQueryKey
+      || !calendar
+      || hasCurrentState
+    ) {
+      return;
+    }
+    void loadCalendarDaySummary(selectedCalendarDate);
+  }, [
+    calendar,
+    calendarDayError,
+    calendarDayLoading,
+    calendarDaySummary,
+    calendarQueryKey,
+    loadCalendarDaySummary,
+    selectedCalendarDate,
+    view,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -467,6 +690,7 @@ export default function TokenUsagePage() {
       overviewRequestId.current += 1;
       summaryRequestId.current += 1;
       calendarRequestId.current += 1;
+      calendarDayRequestId.current += 1;
     };
   }, []);
 
@@ -518,12 +742,53 @@ export default function TokenUsagePage() {
     nextSearchParams.set('view', 'analysis');
     nextSearchParams.set('period', nextPeriod);
     nextSearchParams.set('tool', nextTool);
+    nextSearchParams.delete('year');
     setSearchParams(nextSearchParams);
+  };
+
+  const updateCalendarYear = (nextYear: number): void => {
+    if (nextYear === calendarYear) {
+      return;
+    }
+    calendarRequestId.current += 1;
+    calendarDayRequestId.current += 1;
+    calendarDataKey.current = null;
+    calendarDayDataKey.current = null;
+    setCalendar(null);
+    setCalendarError(null);
+    setCalendarLoading(false);
+    setSelectedCalendarDate('');
+    setCalendarDaySummary(null);
+    setCalendarDayError(null);
+    setCalendarDayLoading(false);
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.set('view', 'calendar');
+    nextSearchParams.set('year', String(nextYear));
+    setSearchParams(nextSearchParams);
+  };
+
+  const selectCalendarDate = (dateKey: string): void => {
+    if (dateKey === selectedCalendarDate) {
+      return;
+    }
+    calendarDayRequestId.current += 1;
+    calendarDayDataKey.current = null;
+    setSelectedCalendarDate(dateKey);
+    setCalendarDaySummary(null);
+    setCalendarDayError(null);
+    setCalendarDayLoading(false);
   };
 
   const viewHref = (nextView: UsageView): string => {
     const nextSearchParams = new URLSearchParams(searchParams);
     nextSearchParams.set('view', nextView);
+    if (nextView === 'calendar') {
+      if (!nextSearchParams.has('year')) {
+        nextSearchParams.set('year', String(calendarYear));
+      }
+    } else {
+      nextSearchParams.delete('year');
+    }
     return `/usage?${nextSearchParams.toString()}`;
   };
 
@@ -553,13 +818,46 @@ export default function TokenUsagePage() {
   const analysisUsedToolCount = displayedSummary?.tools.filter(
     (item) => item.total_tokens > 0,
   ).length ?? 0;
+  const displayedCalendar = calendarDataKey.current === calendarQueryKey
+    ? calendar
+    : null;
+  const displayedCalendarError = calendarDataKey.current === calendarQueryKey
+    ? calendarError
+    : null;
+  const displayedCalendarDaySummary = calendarDayDataKey.current
+      === selectedCalendarDate
+    ? calendarDaySummary
+    : null;
+  const displayedCalendarDayError = calendarDayDataKey.current
+      === selectedCalendarDate
+    ? calendarDayError
+    : null;
+  const calendarDayToolItems = displayedCalendarDaySummary
+    ? toolDistribution(displayedCalendarDaySummary)
+    : [];
+  const calendarDayUsedToolCount = displayedCalendarDaySummary?.tools.filter(
+    (item) => item.total_tokens > 0,
+  ).length ?? 0;
+  const selectedCalendarDay = displayedCalendar?.days.find(
+    (day) => day.date === selectedCalendarDate,
+  );
+  const selectedCalendarLevel = usageIntensityLevel(
+    selectedCalendarDay?.total_tokens ?? 0,
+  );
   const activeLoading = view === 'today'
     ? todayLoading || (!todaySummary && !todayError)
     : view === 'total'
       ? overviewLoading || (!overview && !overviewError)
       : view === 'analysis'
         ? summaryLoading || (!displayedSummary && !displayedSummaryError)
-        : calendarLoading || (!calendar && !calendarError);
+        : calendarLoading
+          || (!displayedCalendar && !displayedCalendarError)
+          || Boolean(
+            displayedCalendar
+            && selectedCalendarDate
+            && !displayedCalendarDaySummary
+            && !displayedCalendarDayError,
+          );
 
   return (
     <main
@@ -831,10 +1129,10 @@ export default function TokenUsagePage() {
           className="usage-view-panel usage-calendar-view"
           aria-labelledby="usage-view-calendar"
         >
-          {calendarError && (
+          {displayedCalendarError && (
             <div className="message-stack usage-message" aria-live="polite">
               <div className="inline-message is-error" role="alert">
-                <span>{calendarError}</span>
+                <span>{displayedCalendarError}</span>
                 <button
                   type="button"
                   className="text-button"
@@ -846,7 +1144,7 @@ export default function TokenUsagePage() {
             </div>
           )}
 
-          {!calendar && !calendarError && (
+          {!displayedCalendar && !displayedCalendarError && (
             <div
               className="usage-calendar-skeleton"
               aria-label="正在读取使用日历"
@@ -856,12 +1154,94 @@ export default function TokenUsagePage() {
             </div>
           )}
 
-          {calendar && (
-            <UsageCalendar
-              days={calendar.days}
-              startDate={calendar.start_date}
-              endDate={calendar.end_date}
-            />
+          {displayedCalendar && (
+            <>
+              <UsageCalendar
+                availableYears={displayedCalendar.available_years}
+                days={displayedCalendar.days}
+                onSelectDate={selectCalendarDate}
+                onSelectYear={updateCalendarYear}
+                selectedDate={selectedCalendarDate}
+                todayDate={todayDate}
+                year={calendarYear}
+              />
+
+              {selectedCalendarDate && (
+                <div className="usage-calendar-day-details">
+                  <div className="usage-calendar-day-heading">
+                    <div>
+                      <p className="section-kicker">DAY DETAILS</p>
+                      <h2 id="usage-calendar-day-title">
+                        {formatCalendarDay(selectedCalendarDate)}
+                      </h2>
+                    </div>
+                    <span className={`is-level-${selectedCalendarLevel}`}>
+                      第 {selectedCalendarLevel} 档 · {
+                        usageIntensityLabel(
+                          selectedCalendarDay?.total_tokens ?? 0,
+                        )
+                      }
+                    </span>
+                  </div>
+
+                  {displayedCalendarDayError && (
+                    <div
+                      className="message-stack usage-message"
+                      aria-live="polite"
+                    >
+                      <div className="inline-message is-error" role="alert">
+                        <span>{displayedCalendarDayError}</span>
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={() => void loadCalendarDaySummary(
+                            selectedCalendarDate,
+                          )}
+                        >
+                          重试
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {!displayedCalendarDaySummary
+                    && !displayedCalendarDayError && (
+                    <div
+                      className="usage-overview-skeleton"
+                      aria-label="正在读取当日用量明细"
+                    >
+                      <span className="skeleton-line is-hero" />
+                      <span className="skeleton-chart" />
+                      <span className="skeleton-chart" />
+                    </div>
+                  )}
+
+                  {displayedCalendarDaySummary && (
+                    <div className="usage-overview-grid">
+                      <UsageTokenReading
+                        kicker="TOKEN BREAKDOWN"
+                        title="Token 分布"
+                        titleId="usage-calendar-day-breakdown-title"
+                        totals={displayedCalendarDaySummary.totals}
+                      />
+                      <UsageDistributionChart
+                        kicker="TOOL SHARE"
+                        title="按工具"
+                        items={calendarDayToolItems}
+                        centerValue={formatTokenCount(calendarDayUsedToolCount)}
+                        centerLabel="个工具"
+                      />
+                      <ModelUsagePanel
+                        models={displayedCalendarDaySummary.models}
+                        totalTokens={
+                          displayedCalendarDaySummary.totals.total_tokens
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </section>
       )}

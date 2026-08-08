@@ -2056,16 +2056,66 @@ svg {
 .usage-calendar-card,
 .usage-calendar-skeleton {
   --calendar-empty: #102b33;
-  --calendar-level-1: #17505a;
-  --calendar-level-2: #1d7475;
-  --calendar-level-3: #27a69b;
-  --calendar-level-4: #32d6c5;
+  --calendar-level-1: #16434b;
+  --calendar-level-2: #176a6b;
+  --calendar-level-3: #1ea59a;
+  --calendar-level-4: #5be6cf;
   border: 1px solid var(--line);
   border-radius: var(--usage-card-radius);
   background: var(--panel);
 }
 
+.usage-calendar-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 76px;
+  gap: 16px;
+  align-items: start;
+}
+
+.usage-calendar-years {
+  display: flex;
+  grid-column: 2;
+  grid-row: 1;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.usage-calendar-years button {
+  min-height: 42px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--muted);
+  background: transparent;
+  font-family: var(--data-font);
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    color 150ms ease,
+    background-color 150ms ease;
+}
+
+.usage-calendar-years button:hover {
+  color: var(--mist);
+  background: rgba(168, 207, 203, 0.045);
+}
+
+.usage-calendar-years button:focus-visible {
+  outline: 2px solid rgba(50, 214, 197, 0.72);
+  outline-offset: 2px;
+}
+
+.usage-calendar-years button.is-active {
+  border-color: rgba(91, 230, 207, 0.22);
+  color: var(--foam);
+  background: rgba(30, 165, 154, 0.15);
+}
+
 .usage-calendar-card {
+  grid-column: 1;
+  grid-row: 1;
   padding: 22px 24px 18px;
   overflow: hidden;
 }
@@ -2090,57 +2140,6 @@ svg {
   font-family: var(--data-font);
   font-size: 0.58rem;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.usage-calendar-readout {
-  display: flex;
-  min-height: 76px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  margin-top: 20px;
-  padding: 14px 16px;
-  border: 1px solid rgba(168, 207, 203, 0.13);
-  border-radius: 14px;
-  background: rgba(7, 24, 32, 0.48);
-}
-
-.usage-calendar-readout > span {
-  color: var(--mist);
-  font-size: 0.72rem;
-  font-weight: 620;
-  white-space: nowrap;
-}
-
-.usage-calendar-readout > div {
-  display: grid;
-  min-width: 0;
-  justify-items: end;
-  gap: 4px;
-}
-
-.usage-calendar-readout strong {
-  overflow: hidden;
-  max-width: 100%;
-  color: var(--foam);
-  font-family: var(--display-font);
-  font-size: 1.28rem;
-  font-variant-numeric: tabular-nums;
-  font-weight: 580;
-  line-height: 1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.usage-calendar-readout small {
-  overflow: hidden;
-  max-width: 100%;
-  color: var(--muted);
-  font-family: var(--data-font);
-  font-size: 0.53rem;
-  font-variant-numeric: tabular-nums;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -2174,14 +2173,14 @@ svg {
 }
 
 .usage-calendar-content {
-  width: 844px;
+  width: var(--calendar-grid-width);
   margin: 0 auto;
 }
 
 .usage-calendar-months {
   display: grid;
   height: 17px;
-  grid-template-columns: repeat(53, 12px);
+  grid-template-columns: repeat(var(--calendar-week-count), 12px);
   gap: 4px;
   color: var(--muted);
   font-family: var(--data-font);
@@ -2195,7 +2194,7 @@ svg {
 
 .usage-calendar-grid {
   display: grid;
-  grid-template-columns: repeat(53, 12px);
+  grid-template-columns: repeat(var(--calendar-week-count), 12px);
   grid-template-rows: repeat(7, 12px);
   grid-auto-flow: column;
   gap: 4px;
@@ -2208,7 +2207,7 @@ svg {
   height: 12px;
   border: 1px solid rgba(168, 207, 203, 0.08);
   border-radius: 3px;
-  background: var(--calendar-empty);
+  background: #102b33;
 }
 
 button.usage-calendar-day {
@@ -2239,11 +2238,6 @@ button.usage-calendar-day {
 .usage-calendar-day.is-level-4,
 .usage-calendar-legend i.is-level-4 {
   background: var(--calendar-level-4);
-}
-
-.usage-calendar-day.is-future {
-  border-color: transparent;
-  background: transparent;
 }
 
 button.usage-calendar-day:hover,
@@ -2287,6 +2281,56 @@ button.usage-calendar-day:focus-visible {
   white-space: nowrap;
 }
 
+.usage-calendar-day-details {
+  margin-top: 20px;
+}
+
+.usage-calendar-day-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding: 0 2px;
+}
+
+.usage-calendar-day-heading h2 {
+  margin: 4px 0 0;
+  color: var(--foam);
+  font-family: var(--display-font);
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.usage-calendar-day-heading > span {
+  padding: 6px 9px;
+  border: 1px solid rgba(168, 207, 203, 0.13);
+  border-radius: 999px;
+  color: var(--mist);
+  background: #102b33;
+  font-family: var(--data-font);
+  font-size: 0.52rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.usage-calendar-day-heading > span.is-level-1 {
+  background: #16434b;
+}
+
+.usage-calendar-day-heading > span.is-level-2 {
+  background: #176a6b;
+}
+
+.usage-calendar-day-heading > span.is-level-3 {
+  background: #1ea59a;
+}
+
+.usage-calendar-day-heading > span.is-level-4 {
+  color: #071820;
+  background: #5be6cf;
+}
+
 .usage-calendar-skeleton {
   position: relative;
   display: grid;
@@ -2310,7 +2354,30 @@ button.usage-calendar-day:focus-visible {
 }
 
 @media (max-width: 620px) {
+  .usage-calendar-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .usage-calendar-years {
+    width: 100%;
+    flex-direction: row;
+    gap: 6px;
+    padding: 2px;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+
+  .usage-calendar-years button {
+    min-width: 68px;
+    min-height: 44px;
+    flex: 0 0 auto;
+  }
+
   .usage-calendar-card {
+    width: 100%;
     padding: 19px 16px 16px;
   }
 
@@ -2318,17 +2385,6 @@ button.usage-calendar-day:focus-visible {
     align-items: start;
     flex-direction: column;
     gap: 7px;
-  }
-
-  .usage-calendar-readout {
-    align-items: start;
-    flex-direction: column;
-    gap: 9px;
-  }
-
-  .usage-calendar-readout > div {
-    width: 100%;
-    justify-items: start;
   }
 
   .usage-calendar-content {
@@ -2343,6 +2399,12 @@ button.usage-calendar-day:focus-visible {
   .usage-calendar-footer p {
     width: 100%;
     min-height: 0;
+  }
+
+  .usage-calendar-day-heading {
+    align-items: start;
+    flex-direction: column;
+    gap: 8px;
   }
 }
 

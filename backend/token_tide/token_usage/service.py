@@ -141,6 +141,7 @@ class TokenUsageService:
         end_date: date,
         calendar_timezone: tzinfo,
         timezone_name: str,
+        now: datetime | None = None,
     ) -> TokenUsageCalendar:
         if start_date > end_date:
             raise ApplicationError(
@@ -203,8 +204,12 @@ class TokenUsageService:
             .order_by("local_date")
         )
 
+        bounds_statement = select(
+            func.min(TokenUsageEventModel.occurred_at).label("first_event_at"),
+        )
         with self.session_factory() as session:
             rows = session.execute(statement).all()
+            bounds = session.execute(bounds_statement).one()
 
         daily_totals = {
             date.fromisoformat(str(row.local_date)): (
@@ -214,10 +219,25 @@ class TokenUsageService:
             for row in rows
             if row.local_date is not None
         }
+        current_time = now or datetime.now(UTC)
+        if current_time.tzinfo is None:
+            raise ValueError("now must include timezone")
+        current_year = current_time.astimezone(calendar_timezone).year
+        if bounds.first_event_at is None:
+            available_years = [current_year]
+        else:
+            first_year = normalize_datetime(
+                bounds.first_event_at,
+            ).astimezone(calendar_timezone).year
+            available_years = list(
+                range(current_year, min(current_year, first_year) - 1, -1)
+            )
+
         return TokenUsageCalendar(
             start_date=start_date,
             end_date=end_date,
             timezone=timezone_name,
+            available_years=available_years,
             days=[
                 TokenUsageCalendarDay(
                     date=local_date,
