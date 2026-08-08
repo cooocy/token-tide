@@ -1,8 +1,15 @@
+from datetime import date
 from unittest.mock import Mock, patch
+
+import pytest
 
 from token_tide.balance.router import router
 from token_tide.main import application_info, main
-from token_tide.token_usage.router import router as token_usage_router
+from token_tide.response import ApplicationError
+from token_tide.token_usage.router import (
+    find_calendar,
+    router as token_usage_router,
+)
 
 
 def test_application_info_uses_unknown_commit_by_default(
@@ -63,6 +70,7 @@ def test_business_routes_do_not_include_reverse_proxy_prefix() -> None:
     }
     assert set(token_usage_routes) == {
         "/token-usage/card.svg",
+        "/token-usage/calendar",
         "/token-usage/overview",
         "/token-usage/summary",
         "/token-usage/totals",
@@ -70,6 +78,7 @@ def test_business_routes_do_not_include_reverse_proxy_prefix() -> None:
         "/token-usage/{tool}/events/batch",
     }
     assert token_usage_routes["/token-usage/card.svg"].dependencies == []
+    assert token_usage_routes["/token-usage/calendar"].dependencies == []
     assert token_usage_routes["/token-usage/overview"].dependencies == []
     assert token_usage_routes["/token-usage/summary"].dependencies == []
     assert token_usage_routes["/token-usage/totals"].dependencies == []
@@ -79,3 +88,13 @@ def test_business_routes_do_not_include_reverse_proxy_prefix() -> None:
     assert len(
         token_usage_routes["/token-usage/{tool}/events/batch"].dependencies
     ) == 1
+
+
+def test_token_usage_calendar_rejects_unknown_timezone() -> None:
+    with pytest.raises(ApplicationError, match="Unknown"):
+        find_calendar(
+            service=Mock(),
+            start_date=date(2026, 8, 1),
+            end_date=date(2026, 8, 8),
+            timezone="Mars/Olympus",
+        )

@@ -98,6 +98,19 @@ class TokenUsageOverview(BaseModel):
     models: list[TokenUsageModelSummary]
 
 
+class TokenUsageCalendarDay(BaseModel):
+    date: date
+    event_count: int
+    total_tokens: int
+
+
+class TokenUsageCalendar(BaseModel):
+    start_date: date
+    end_date: date
+    timezone: str
+    days: list[TokenUsageCalendarDay]
+
+
 class TokenUsageSummary(BaseModel):
     start_time: datetime
     end_time: datetime

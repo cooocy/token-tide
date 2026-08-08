@@ -1602,7 +1602,7 @@ svg {
 
 .usage-view-rail {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
   padding: 4px;
   border: 1px solid rgba(168, 207, 203, 0.14);
@@ -2049,6 +2049,307 @@ svg {
 .usage-analysis > .usage-skeleton {
   margin-top: 14px;
   margin-bottom: 14px;
+}
+
+/* Token usage contribution calendar */
+
+.usage-calendar-card,
+.usage-calendar-skeleton {
+  --calendar-empty: #102b33;
+  --calendar-level-1: #17505a;
+  --calendar-level-2: #1d7475;
+  --calendar-level-3: #27a69b;
+  --calendar-level-4: #32d6c5;
+  border: 1px solid var(--line);
+  border-radius: var(--usage-card-radius);
+  background: var(--panel);
+}
+
+.usage-calendar-card {
+  padding: 22px 24px 18px;
+  overflow: hidden;
+}
+
+.usage-calendar-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.usage-calendar-heading h2 {
+  margin: 4px 0 0;
+  color: var(--foam);
+  font-family: var(--display-font);
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.usage-calendar-heading > span {
+  color: var(--muted);
+  font-family: var(--data-font);
+  font-size: 0.58rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.usage-calendar-readout {
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 20px;
+  padding: 14px 16px;
+  border: 1px solid rgba(168, 207, 203, 0.13);
+  border-radius: 14px;
+  background: rgba(7, 24, 32, 0.48);
+}
+
+.usage-calendar-readout > span {
+  color: var(--mist);
+  font-size: 0.72rem;
+  font-weight: 620;
+  white-space: nowrap;
+}
+
+.usage-calendar-readout > div {
+  display: grid;
+  min-width: 0;
+  justify-items: end;
+  gap: 4px;
+}
+
+.usage-calendar-readout strong {
+  overflow: hidden;
+  max-width: 100%;
+  color: var(--foam);
+  font-family: var(--display-font);
+  font-size: 1.28rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 580;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-calendar-readout small {
+  overflow: hidden;
+  max-width: 100%;
+  color: var(--muted);
+  font-family: var(--data-font);
+  font-size: 0.53rem;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-calendar-frame {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.usage-calendar-weekdays {
+  display: grid;
+  grid-template-rows: repeat(7, 12px);
+  gap: 4px;
+  padding-top: 25px;
+  color: var(--muted);
+  font-family: var(--data-font);
+  font-size: 0.5rem;
+  line-height: 12px;
+  text-align: right;
+}
+
+.usage-calendar-scroll {
+  min-width: 0;
+  padding-bottom: 8px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-color: rgba(50, 214, 197, 0.28) transparent;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.usage-calendar-content {
+  width: 844px;
+  margin: 0 auto;
+}
+
+.usage-calendar-months {
+  display: grid;
+  height: 17px;
+  grid-template-columns: repeat(53, 12px);
+  gap: 4px;
+  color: var(--muted);
+  font-family: var(--data-font);
+  font-size: 0.5rem;
+  white-space: nowrap;
+}
+
+.usage-calendar-months span {
+  line-height: 12px;
+}
+
+.usage-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(53, 12px);
+  grid-template-rows: repeat(7, 12px);
+  grid-auto-flow: column;
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.usage-calendar-day,
+.usage-calendar-legend i {
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(168, 207, 203, 0.08);
+  border-radius: 3px;
+  background: var(--calendar-empty);
+}
+
+button.usage-calendar-day {
+  position: relative;
+  padding: 0;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+.usage-calendar-day.is-level-1,
+.usage-calendar-legend i.is-level-1 {
+  background: var(--calendar-level-1);
+}
+
+.usage-calendar-day.is-level-2,
+.usage-calendar-legend i.is-level-2 {
+  background: var(--calendar-level-2);
+}
+
+.usage-calendar-day.is-level-3,
+.usage-calendar-legend i.is-level-3 {
+  background: var(--calendar-level-3);
+}
+
+.usage-calendar-day.is-level-4,
+.usage-calendar-legend i.is-level-4 {
+  background: var(--calendar-level-4);
+}
+
+.usage-calendar-day.is-future {
+  border-color: transparent;
+  background: transparent;
+}
+
+button.usage-calendar-day:hover,
+button.usage-calendar-day:focus-visible,
+button.usage-calendar-day.is-selected {
+  z-index: 1;
+  border-color: var(--foam);
+  box-shadow:
+    0 0 0 1px rgba(7, 24, 32, 0.92),
+    0 0 0 3px rgba(50, 214, 197, 0.22);
+  transform: scale(1.14);
+}
+
+button.usage-calendar-day:focus-visible {
+  outline: 0;
+}
+
+.usage-calendar-footer {
+  display: flex;
+  min-height: 18px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.usage-calendar-footer p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.usage-calendar-legend {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  color: var(--muted);
+  font-family: var(--data-font);
+  font-size: 0.5rem;
+  white-space: nowrap;
+}
+
+.usage-calendar-skeleton {
+  position: relative;
+  display: grid;
+  gap: 18px;
+  min-height: 300px;
+  padding: 24px;
+  overflow: hidden;
+}
+
+.usage-calendar-skeleton::before {
+  position: absolute;
+  inset: 0;
+  background: rgba(168, 207, 203, 0.035);
+  content: "";
+  animation: skeleton-breathe 1.5s ease-in-out infinite;
+}
+
+.usage-calendar-skeleton .skeleton-chart {
+  width: 100%;
+  height: 190px;
+}
+
+@media (max-width: 620px) {
+  .usage-calendar-card {
+    padding: 19px 16px 16px;
+  }
+
+  .usage-calendar-heading {
+    align-items: start;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .usage-calendar-readout {
+    align-items: start;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .usage-calendar-readout > div {
+    width: 100%;
+    justify-items: start;
+  }
+
+  .usage-calendar-content {
+    margin: 0;
+  }
+
+  .usage-calendar-footer {
+    align-items: end;
+    flex-direction: column;
+  }
+
+  .usage-calendar-footer p {
+    width: 100%;
+    min-height: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button.usage-calendar-day {
+    transition: none;
+  }
 }
 
 @media (max-width: 420px) {

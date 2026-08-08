@@ -165,6 +165,7 @@ GET  /balances/{provider}/history
 POST /refresh
 POST /refresh/{provider}
 GET  /token-usage/overview
+GET  /token-usage/calendar
 GET  /token-usage/summary
 GET  /token-usage/totals
 GET  /token-usage/card.svg
@@ -198,6 +199,17 @@ checkpoint 与批量上报接口仍要求 Token Usage Bearer Token。
 Token Usage 总计接口同样公开读取，仅接受可选的 `tool` 参数。它使用数据库聚合统计
 全部历史事件，返回累计请求数、`total_tokens` 和各 Token 类型明细，不返回每日趋势
 或模型排行，也不受 31 天查询跨度限制。
+
+Token Usage 日历接口公开读取，支持：
+
+```text
+start-date    # 必填，包含的本地起始日期，YYYY-MM-DD
+end-date      # 必填，包含的本地结束日期，YYYY-MM-DD
+timezone      # 必填，IANA 时区，例如 Asia/Shanghai
+```
+
+查询最多覆盖 371 个自然日。接口按所选时区的日界线在数据库聚合，返回零值补齐的每日
+请求数和 `total_tokens`，用于前端最近 53 周贡献日历；它不返回原始事件或工具明细。
 
 ### GitHub Profile 用量仪表
 
@@ -306,10 +318,9 @@ Alembic migration；部署时需要同步更新 Backend、Frontend 和执行采�
 
 ## 前端
 
-前端提供余额看板、余额历史和 Token 用量查看页。使用量页顶部固定展示全部历史的累计
-Token、请求数，以及按工具和按模型分组的用量；下方分析区默认查看最近 7 天，可切换
-今天、30 天以及 Claude、Codex、OpenCode、Pi 单个工具。每日趋势按浏览器本地日界线聚合，
-筛选只影响分析区，不改变顶部累计概览。
+前端提供余额看板、余额历史和 Token 用量查看页。Token 用量包含今日、总计、用量分析
+和日历四个视图；分析视图默认查看最近 7 天，可切换今天、30 天以及 Claude、Codex、
+OpenCode、Pi 单个工具。日历视图按浏览器本地日界线展示最近 53 周的整体 Token 活跃度。
 
 ```bash
 cd frontend

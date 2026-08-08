@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, Query, Response
 
-from token_tide.response import R, ok
+from token_tide.response import ApplicationError, R, ok
 from token_tide.token_usage.card import (
     UsageCardPeriod,
     UsageCardTheme,
@@ -19,6 +20,7 @@ from token_tide.token_usage.domain import TokenUsageTool
 from token_tide.token_usage.schemas import (
     TokenUsageBatchInput,
     TokenUsageBatchResult,
+    TokenUsageCalendar,
     TokenUsageCheckpointValue,
     TokenUsageOverview,
     TokenUsageSummary,
@@ -72,6 +74,34 @@ def find_card(
 )
 def find_overview(service: Service) -> R[TokenUsageOverview]:
     return ok(service.overview())
+
+
+@router.get(
+    "/calendar",
+    response_model=R[TokenUsageCalendar],
+)
+def find_calendar(
+    service: Service,
+    start_date: date = Query(alias="start-date"),
+    end_date: date = Query(alias="end-date"),
+    timezone: str = Query(min_length=1, max_length=64),
+) -> R[TokenUsageCalendar]:
+    try:
+        calendar_timezone = ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise ApplicationError(
+            422,
+            42208,
+            "Unknown token usage calendar timezone",
+        ) from None
+    return ok(
+        service.calendar(
+            start_date=start_date,
+            end_date=end_date,
+            calendar_timezone=calendar_timezone,
+            timezone_name=timezone,
+        )
+    )
 
 
 @router.get(

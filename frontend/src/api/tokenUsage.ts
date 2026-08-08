@@ -44,6 +44,19 @@ export interface TokenUsageOverview {
   models: TokenUsageModelSummary[];
 }
 
+export interface TokenUsageCalendarDay {
+  date: string;
+  event_count: number;
+  total_tokens: number;
+}
+
+export interface TokenUsageCalendar {
+  start_date: string;
+  end_date: string;
+  timezone: string;
+  days: TokenUsageCalendarDay[];
+}
+
 export interface TokenUsageSummaryQuery {
   startTime: string;
   endTime: string;
@@ -53,6 +66,12 @@ export interface TokenUsageSummaryQuery {
 
 export interface TokenUsageTotalsQuery {
   tool?: TokenUsageTool;
+}
+
+export interface TokenUsageCalendarQuery {
+  startDate: string;
+  endDate: string;
+  timezone: string;
 }
 
 export function findTokenUsageSummary(
@@ -70,6 +89,18 @@ export function findTokenUsageSummary(
 
 export function findTokenUsageOverview(): Promise<TokenUsageOverview> {
   return client.get<unknown, TokenUsageOverview>('/token-usage/overview');
+}
+
+export function findTokenUsageCalendar(
+  query: TokenUsageCalendarQuery,
+): Promise<TokenUsageCalendar> {
+  return client.get<unknown, TokenUsageCalendar>('/token-usage/calendar', {
+    params: {
+      'start-date': query.startDate,
+      'end-date': query.endDate,
+      timezone: query.timezone,
+    },
+  });
 }
 
 export function findTokenUsageTotals(

@@ -1,7 +1,7 @@
 from collections.abc import Callable
-from datetime import UTC, date, datetime, timedelta, tzinfo
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, literal_column, select
 from sqlalchemy.orm import Session
 
 from token_tide.response import ApplicationError
@@ -13,6 +13,8 @@ from token_tide.token_usage.models import (
 from token_tide.token_usage.schemas import (
     TokenUsageBatchInput,
     TokenUsageBatchResult,
+    TokenUsageCalendar,
+    TokenUsageCalendarDay,
     TokenUsageCheckpointValue,
     TokenUsageDay,
     TokenUsageEventInput,
@@ -43,6 +45,7 @@ TOKEN_FIELDS = (
     "total_tokens",
 )
 MAX_SUMMARY_RANGE = timedelta(days=31)
+MAX_CALENDAR_DAYS = 371
 
 
 def normalize_datetime(value: datetime) -> datetime:
@@ -129,6 +132,99 @@ class TokenUsageService:
                     total_tokens=int(row.total_tokens),
                 )
                 for row in model_rows
+            ],
+        )
+
+    def calendar(
+        self,
+        start_date: date,
+        end_date: date,
+        calendar_timezone: tzinfo,
+        timezone_name: str,
+    ) -> TokenUsageCalendar:
+        if start_date > end_date:
+            raise ApplicationError(
+                422,
+                42206,
+                "start-date must not be after end-date",
+            )
+        day_count = (end_date - start_date).days + 1
+        if day_count > MAX_CALENDAR_DAYS:
+            raise ApplicationError(
+                422,
+                42207,
+                "Token usage calendar range cannot exceed 371 days",
+            )
+
+        local_dates = [
+            start_date + timedelta(days=offset)
+            for offset in range(day_count)
+        ]
+        day_ranges = [
+            (
+                local_date,
+                datetime.combine(
+                    local_date,
+                    time.min,
+                    calendar_timezone,
+                ).astimezone(UTC),
+                datetime.combine(
+                    local_date + timedelta(days=1),
+                    time.min,
+                    calendar_timezone,
+                ).astimezone(UTC),
+            )
+            for local_date in local_dates
+        ]
+        local_date_bucket = case(
+            *[
+                (
+                    TokenUsageEventModel.occurred_at < day_end,
+                    literal_column(f"'{local_date.isoformat()}'"),
+                )
+                for local_date, _day_start, day_end in day_ranges
+            ],
+            else_=None,
+        ).label("local_date")
+        statement = (
+            select(
+                local_date_bucket,
+                func.count(TokenUsageEventModel.id).label("event_count"),
+                func.coalesce(
+                    func.sum(TokenUsageEventModel.total_tokens),
+                    0,
+                ).label("total_tokens"),
+            )
+            .where(
+                TokenUsageEventModel.occurred_at >= day_ranges[0][1],
+                TokenUsageEventModel.occurred_at < day_ranges[-1][2],
+            )
+            .group_by("local_date")
+            .order_by("local_date")
+        )
+
+        with self.session_factory() as session:
+            rows = session.execute(statement).all()
+
+        daily_totals = {
+            date.fromisoformat(str(row.local_date)): (
+                int(row.event_count),
+                int(row.total_tokens),
+            )
+            for row in rows
+            if row.local_date is not None
+        }
+        return TokenUsageCalendar(
+            start_date=start_date,
+            end_date=end_date,
+            timezone=timezone_name,
+            days=[
+                TokenUsageCalendarDay(
+                    date=local_date,
+                    event_count=daily_totals.get(local_date, (0, 0))[0],
+                    total_tokens=daily_totals.get(local_date, (0, 0))[1],
+                )
+                for local_date in local_dates
             ],
         )
 

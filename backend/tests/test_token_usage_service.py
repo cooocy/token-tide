@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -402,6 +402,70 @@ def test_summary_uses_calendar_timezone_across_daylight_saving_change(
         "2026-03-08",
     ]
     assert [day.total_tokens for day in summary.timeline] == [10, 20]
+
+
+def test_calendar_aggregates_local_days_and_zero_fills_across_dst(
+    service: tuple[TokenUsageService, sessionmaker[Session]],
+) -> None:
+    usage_service, _ = service
+    usage_service.ingest(
+        TokenUsageTool.CODEX,
+        TokenUsageBatchInput(
+            events=[
+                event(
+                    source_event_id="d" * 64,
+                    occurred_at=datetime(2026, 3, 8, 4, 30, tzinfo=UTC),
+                    total_tokens=10,
+                ),
+                event(
+                    source_event_id="e" * 64,
+                    occurred_at=datetime(2026, 3, 8, 5, 30, tzinfo=UTC),
+                    total_tokens=20,
+                ),
+            ],
+            next_cursor={"version": 1},
+        ),
+    )
+
+    calendar = usage_service.calendar(
+        start_date=date(2026, 3, 6),
+        end_date=date(2026, 3, 8),
+        calendar_timezone=ZoneInfo("America/New_York"),
+        timezone_name="America/New_York",
+    )
+
+    assert calendar.timezone == "America/New_York"
+    assert [day.date.isoformat() for day in calendar.days] == [
+        "2026-03-06",
+        "2026-03-07",
+        "2026-03-08",
+    ]
+    assert [day.event_count for day in calendar.days] == [0, 1, 1]
+    assert [day.total_tokens for day in calendar.days] == [0, 10, 20]
+
+
+@pytest.mark.parametrize(
+    ("start_date", "end_date", "message"),
+    [
+        (date(2026, 8, 2), date(2026, 8, 1), "after"),
+        (date(2025, 7, 31), date(2026, 8, 6), "371 days"),
+    ],
+)
+def test_calendar_rejects_invalid_ranges(
+    service: tuple[TokenUsageService, sessionmaker[Session]],
+    start_date: date,
+    end_date: date,
+    message: str,
+) -> None:
+    usage_service, _ = service
+
+    with pytest.raises(ApplicationError, match=message):
+        usage_service.calendar(
+            start_date=start_date,
+            end_date=end_date,
+            calendar_timezone=ZoneInfo("Asia/Shanghai"),
+            timezone_name="Asia/Shanghai",
+        )
 
 
 @pytest.mark.parametrize(

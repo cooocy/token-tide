@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
+  findTokenUsageCalendar,
   findTokenUsageOverview,
   findTokenUsageSummary,
+  type TokenUsageCalendar,
   type TokenUsageModelSummary,
   type TokenUsageOverview,
   type TokenUsageSummary,
@@ -11,6 +13,7 @@ import {
 } from '@/api/tokenUsage';
 import ProductHeader from '@/components/ProductHeader';
 import ProductNavigation from '@/components/ProductNavigation';
+import UsageCalendar from '@/components/UsageCalendar';
 import UsageDistributionChart, {
   type UsageDistributionItem,
 } from '@/components/UsageDistributionChart';
@@ -22,7 +25,7 @@ import {
 
 type UsagePeriod = 'today' | '7d' | '30d';
 type ToolFilter = 'all' | TokenUsageTool;
-type UsageView = 'today' | 'total' | 'analysis';
+type UsageView = 'today' | 'total' | 'analysis' | 'calendar';
 
 const PERIODS: { value: UsagePeriod; label: string }[] = [
   { value: 'today', label: '今天' },
@@ -55,6 +58,7 @@ const USAGE_VIEWS: {
   { value: 'today', kicker: 'TODAY', label: '今日' },
   { value: 'total', kicker: 'ALL-TIME', label: '总计' },
   { value: 'analysis', kicker: 'ANALYSIS', label: '用量分析' },
+  { value: 'calendar', kicker: 'CALENDAR', label: '日历' },
 ];
 const TOKEN_DETAILS = [
   { field: 'input_tokens', label: '输入', prominence: 'primary' },
@@ -103,6 +107,36 @@ function queryRange(period: UsagePeriod): {
     startTime: start.toISOString(),
     endTime: now.toISOString(),
     timezoneOffsetMinutes: -now.getTimezoneOffset(),
+  };
+}
+
+function formatLocalDate(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function calendarRange(): {
+  startDate: string;
+  endDate: string;
+  timezone: string;
+} {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const start = new Date(today);
+  const daysSinceMonday = (start.getDay() + 6) % 7;
+  start.setDate(start.getDate() - daysSinceMonday - 52 * 7);
+  let timezone = 'Asia/Shanghai';
+  try {
+    timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || timezone;
+  } catch {
+    // The fallback keeps the calendar usable in restricted browser runtimes.
+  }
+  return {
+    startDate: formatLocalDate(start),
+    endDate: formatLocalDate(today),
+    timezone,
   };
 }
 
@@ -261,19 +295,24 @@ export default function TokenUsagePage() {
   );
   const [overview, setOverview] = useState<TokenUsageOverview | null>(null);
   const [summary, setSummary] = useState<TokenUsageSummary | null>(null);
+  const [calendar, setCalendar] = useState<TokenUsageCalendar | null>(null);
   const [todayLoading, setTodayLoading] = useState(false);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [calendarLoading, setCalendarLoading] = useState(false);
   const [todayError, setTodayError] = useState<string | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [calendarError, setCalendarError] = useState<string | null>(null);
   const todayRequestId = useRef(0);
   const overviewRequestId = useRef(0);
   const summaryRequestId = useRef(0);
+  const calendarRequestId = useRef(0);
   const summaryDataKey = useRef<string | null>(null);
   const toolSegmentsRef = useRef<HTMLDivElement | null>(null);
   const activeToolButtonRef = useRef<HTMLButtonElement | null>(null);
   const summaryQueryKey = `${period}:${tool}`;
+  const calendarQuery = useMemo(calendarRange, []);
 
   const loadTodaySummary = useCallback(async (): Promise<void> => {
     const currentRequestId = todayRequestId.current + 1;
@@ -352,6 +391,30 @@ export default function TokenUsagePage() {
     }
   }, [period, summaryQueryKey, tool]);
 
+  const loadCalendar = useCallback(async (): Promise<void> => {
+    const currentRequestId = calendarRequestId.current + 1;
+    calendarRequestId.current = currentRequestId;
+    setCalendarLoading(true);
+    setCalendarError(null);
+    try {
+      const data = await findTokenUsageCalendar(calendarQuery);
+      if (calendarRequestId.current === currentRequestId) {
+        setCalendar(data);
+      }
+    } catch (loadError) {
+      if (calendarRequestId.current === currentRequestId) {
+        setCalendar(null);
+        setCalendarError(
+          loadError instanceof Error ? loadError.message : '使用日历加载失败',
+        );
+      }
+    } finally {
+      if (calendarRequestId.current === currentRequestId) {
+        setCalendarLoading(false);
+      }
+    }
+  }, [calendarQuery]);
+
   useEffect(() => {
     if (requestedView === view) {
       return;
@@ -392,10 +455,18 @@ export default function TokenUsagePage() {
   ]);
 
   useEffect(() => {
+    if (view !== 'calendar' || calendar || calendarError || calendarLoading) {
+      return;
+    }
+    void loadCalendar();
+  }, [calendar, calendarError, calendarLoading, loadCalendar, view]);
+
+  useEffect(() => {
     return () => {
       todayRequestId.current += 1;
       overviewRequestId.current += 1;
       summaryRequestId.current += 1;
+      calendarRequestId.current += 1;
     };
   }, []);
 
@@ -486,7 +557,9 @@ export default function TokenUsagePage() {
     ? todayLoading || (!todaySummary && !todayError)
     : view === 'total'
       ? overviewLoading || (!overview && !overviewError)
-      : summaryLoading || (!displayedSummary && !displayedSummaryError);
+      : view === 'analysis'
+        ? summaryLoading || (!displayedSummary && !displayedSummaryError)
+        : calendarLoading || (!calendar && !calendarError);
 
   return (
     <main
@@ -749,6 +822,46 @@ export default function TokenUsagePage() {
                 />
               </div>
             )
+          )}
+        </section>
+      )}
+
+      {view === 'calendar' && (
+        <section
+          className="usage-view-panel usage-calendar-view"
+          aria-labelledby="usage-view-calendar"
+        >
+          {calendarError && (
+            <div className="message-stack usage-message" aria-live="polite">
+              <div className="inline-message is-error" role="alert">
+                <span>{calendarError}</span>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => void loadCalendar()}
+                >
+                  重试
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!calendar && !calendarError && (
+            <div
+              className="usage-calendar-skeleton"
+              aria-label="正在读取使用日历"
+            >
+              <span className="skeleton-line is-short" />
+              <span className="skeleton-chart" />
+            </div>
+          )}
+
+          {calendar && (
+            <UsageCalendar
+              days={calendar.days}
+              startDate={calendar.start_date}
+              endDate={calendar.end_date}
+            />
           )}
         </section>
       )}
